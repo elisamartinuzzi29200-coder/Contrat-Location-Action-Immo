@@ -16,3 +16,6 @@ footer{display:flex;justify-content:space-between;margin-top:22px}.modal{positio
 .dossierActions{display:flex;gap:8px;flex-wrap:wrap}.dangerBtn{border-color:#b36d6d;color:#8e3434}
 .emptyState{border:1px dashed #aaa;border-radius:8px;padding:26px;text-align:center;background:#fafafa}.emptyState p{color:var(--muted);font-size:13px}
 @media(max-width:700px){.dossierCard{align-items:flex-start;flex-direction:column}.dashboardHead{flex-direction:column}}
+
+.smallModal{max-width:650px}.startChoices{display:grid;grid-template-columns:1fr 1fr;gap:14px}.startCard{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:6px;padding:18px;border:1px solid var(--line);border-radius:9px;background:#fafafa;min-height:110px}.startCard:hover{background:var(--soft)}.startCard strong{font-size:15px}.startCard span{font-size:12px;color:var(--muted);font-weight:400}.importGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.importItem{border:1px solid var(--line);border-radius:7px;padding:10px;background:#fafafa}.importItem strong{display:block;font-size:12px;margin-bottom:4px}.importItem span{font-size:13px;color:#555}
+@media(max-width:700px){.startChoices,.importGrid{grid-template-columns:1fr}}
