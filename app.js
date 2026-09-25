@@ -14,7 +14,7 @@ function dossierTitle(d){
 }
 function newDossier(){
   currentId="loc_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
-  data=initial();step=0;viewMode="editor";renderDashboard();
+  data=initial();step=0;viewMode="editor";render();
 }
 function saveDossier(){
   if(!currentId)currentId="loc_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
@@ -110,4 +110,4 @@ $("modelsBtn").onclick=async()=>{$("modelsModal").classList.remove("hidden");awa
 $("saveBtn").onclick=()=>{if(viewMode==="dashboard")return;saveDossier()};$("dashboardBtn").onclick=()=>{viewMode="dashboard";renderDashboard()};$("newBtn").onclick=newDossier;
 $("generateBtn").onclick=async()=>{try{if(viewMode==="dashboard"){alert("Ouvre d’abord un dossier.");return}const key=data.type+"_"+data.gestion,f=await getFile(key);if(!f){$("modelsModal").classList.remove("hidden");await renderTemplates();alert("Charge d’abord le modèle Word : "+models[key].label);return}saveDossier();const bytes=f.bytes instanceof Uint8Array?f.bytes:new Uint8Array(f.bytes),blob=await buildLocation(bytes,data),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="CONTRAT_LOCATION_"+data.type.toUpperCase()+"_"+(data.gestion==="gestion"?"GESTION":"HORS_GESTION")+"_REMPLI.docx";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}catch(e){alert("Impossible de générer le Word : "+e.message)}};
 $("prev").onclick=()=>{if(step>0){step--;render()}};$("next").onclick=()=>{if(step<sections.length-1){step++;render()}};
-render();
+renderDashboard();
