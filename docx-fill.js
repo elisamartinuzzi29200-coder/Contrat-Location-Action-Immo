@@ -199,6 +199,132 @@ async function extractExistingLease(bytes){
   for(const x of annexLabels)out.annexes[x]=readCheck(doc,x);
   return out;
 }
+
+function leaseBlankParty(){return {type:"physique",nom:"",prenoms:"",denomination:"",adresse:"",email:"",tel:""}}
+function pdfClean(s){return String(s||"").replace(/[\u0000-\u001f]+/g," ").replace(/[ \t]+/g," ").replace(/\n[ \t]+/g,"\n").trim()}
+function pdfSection(text,start,end,max=1200){
+  const m=text.match(start);if(!m)return "";
+  const pos=(m.index||0)+m[0].length,tail=text.slice(pos,pos+max);
+  if(!end)return pdfClean(tail);
+  const e=tail.search(end);return pdfClean(e>=0?tail.slice(0,e):tail);
+}
+function pdfSimpleValue(text,start,end){return pdfSection(text,start,end,700).replace(/^[\s:;.-]+/,"").replace(/[☐☒□■]+/g," ").replace(/\s+/g," ").trim()}
+function pdfMoney(v){const m=String(v||"").match(/(?:^|\s)(\d[\d\s.,]*)(?:\s*€|\s*$)/);return m?m[1].replace(/\s/g,"").replace(",","."):""}
+function parsePdfBailleur(text){
+  let raw=pdfSimpleValue(text,/Nom et pr[ée]nom,? ou d[ée]nomination du bailleur[^:]*:/i,/Personne physique/i);
+  if(!raw){raw=pdfSimpleValue(text,/LE PR[ÉE]SENT CONTRAT EST CONCLU ENTRE LES SOUSSIGN[ÉE]S\s*:/i,/Personne physique/i).replace(/Nom et pr[ée]nom,? ou d[ée]nomination du bailleur[^:]*:/i,"").trim()}
+  raw=raw.replace(/Adresse [ée]lectronique.*$/i,"").trim();
+  const typeBlock=pdfSection(text,/Personne physique/i,/D[ée]nomm[ée]s ci-apr[èe]s/i,700);
+  const morale=/[☒■✓✔Xx]\s*Personne morale/i.test(typeBlock)||/\b(SCI|SARL|SAS|EURL|SASU|SOCI[ÉE]T[ÉE])\b/i.test(raw);
+  const emailBlock=pdfSimpleValue(text,/Adresse [ée]lectronique\s*\(2\)\s*:/i,/T[ée]l[ée]phone\s*\(2\)\s*:/i);
+  const email=(emailBlock.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)||[""])[0];
+  const telBlock=pdfSimpleValue(text,/T[ée]l[ée]phone\s*\(2\)\s*:/i,/D[ée]nomm[ée]s ci-apr[èe]s/i);
+  const tel=(telBlock.match(/(?:\+33|0)[1-9](?:[ .-]?\d{2}){4}/)||[""])[0];
+  if(morale){
+    let denomination=raw,adresse="";const m=raw.match(/^(.+?)(?:\s+si[eè]ge social\s*:?|,\s*(?:dont le )?si[eè]ge social\s*:?)(.+)$/i);
+    if(m){denomination=m[1].trim();adresse=m[2].trim()}
+    return [{type:"morale",nom:"",prenoms:"",denomination,adresse,email,tel}];
+  }
+  let ident=raw,adresse="";const m=raw.match(/^(.+?)(?:,?\s+demeurant\s+|\s+-\s+)(.+)$/i);
+  if(m){ident=m[1].trim();adresse=m[2].trim()}
+  ident=ident.replace(/^(Monsieur|Madame|M\.?|Mme)\s+/i,"").trim();
+  const parts=ident.split(/\s+/).filter(Boolean);if(!parts.length)return [leaseBlankParty()];
+  return [{type:"physique",nom:parts.shift()||"",prenoms:parts.join(" "),denomination:"",adresse,email,tel}];
+}
+function parsePdfLeaseText(raw){
+  const text=pdfClean(raw);
+  const type=/CONTRAT DE LOCATION\s+LOGEMENT\s+MEUBL[ÉE]|LOGEMENT\s+MEUBL[ÉE]/i.test(text)?"meuble":"nu";
+  const gestion=/mandataire gestionnaire[\s\S]{0,700}ACTION IMMOBILIERE/i.test(text)?"gestion":"hors";
+  const habitatBlock=pdfSection(text,/Type d[’']habitat\s*:/i,/Identifiant fiscal/i,300);
+  const regimeBlock=pdfSection(text,/R[ée]gime juridique de l[’']immeuble\s*:/i,/P[ée]riode de construction/i,300);
+  const periodBlock=pdfSection(text,/P[ée]riode de construction\s*:/i,/Surface habitable/i,450);
+  const destinationBlock=pdfSection(text,/B\.\s*Destination des locaux/i,/C\.\s*Le cas [ée]ch[ée]ant/i,700);
+  const chauffageBlock=pdfSection(text,/Modalit[ée] de r[ée]partition du chauffage/i,/Modalit[ée] de r[ée]partition de l[’']eau chaude/i,350);
+  const eauBlock=pdfSection(text,/Modalit[ée] de r[ée]partition de l[’']eau chaude sanitaire/i,/Rappel\s*:/i,350);
+  const out={
+    type,gestion,bailleurs:parsePdfBailleur(text),locataires:[leaseBlankParty()],
+    localisation:pdfSimpleValue(text,/Localisation du logement[^:]*:/i,/Type d[’']habitat\s*:/i),
+    habitat:/[☒■✓✔Xx]\s*individuel/i.test(habitatBlock)?"individuel":"collectif",
+    identifiantFiscal:pdfSimpleValue(text,/Identifiant fiscal du logement[^:]*:/i,/R[ée]gime juridique/i),
+    regime:/[☒■✓✔Xx]\s*monopropri[ée]t[ée]/i.test(regimeBlock)?"monopropriete":"copropriete",
+    periode:/[☒■✓✔Xx]\s*Avant 1949/i.test(periodBlock)?"avant1949":/[☒■✓✔Xx]\s*de 1949/i.test(periodBlock)?"1949-1974":/[☒■✓✔Xx]\s*de 1975/i.test(periodBlock)?"1975-1989":/[☒■✓✔Xx]\s*de 1989/i.test(periodBlock)?"1989-2005":"depuis2005",
+    surface:(pdfSimpleValue(text,/Surface habitable\s*:/i,/Nombre de pi[èe]ces principales/i).match(/[\d.,]+/)||[""])[0],
+    pieces:(pdfSimpleValue(text,/Nombre de pi[èe]ces principales/i,/Caract[ée]ristiques du logement/i).match(/\d+/)||[""])[0],
+    caracteristiques:pdfSimpleValue(text,/Caract[ée]ristiques du logement\s*:/i,/Le cas [ée]ch[ée]ant Autres parties du logement/i),
+    autresParties:pdfSimpleValue(text,/Le cas [ée]ch[ée]ant Autres parties du logement\s*:/i,/Le cas [ée]ch[ée]ant El[ée]ments d[’']?[ée]quipements du logement/i),
+    equipements:pdfSimpleValue(text,/Le cas [ée]ch[ée]ant El[ée]ments d[’']?[ée]quipements du logement\s*:/i,/Modalit[ée] de r[ée]partition du chauffage/i),
+    chauffageMode:/[☒■✓✔Xx]\s*Collectif/i.test(chauffageBlock)?"collectif":"individuel",chauffageAutre:"",
+    eauMode:/[☒■✓✔Xx]\s*Collectif/i.test(eauBlock)?"collectif":"individuel",eauAutre:"",
+    destination:/[☒■✓✔Xx]\s*[ÀA] usage mixte/i.test(destinationBlock)?"mixte":"habitation",
+    professionMixte:pdfSimpleValue(destinationBlock,/profession de\s*:/i,/Le LOCATAIRE/i),
+    accessoiresPrivatifs:pdfSimpleValue(text,/D[ée]signation des locaux et [ée]quipements accessoires[^:]*:/i,/D\.\s*Le cas [ée]ch[ée]ant/i),
+    partiesCommunes:pdfSimpleValue(text,/Enum[ée]ration des locaux, parties, [ée]quipements et accessoires[^:]*:/i,/E\.\s*Le cas [ée]ch[ée]ant/i),
+    technologies:pdfSimpleValue(text,/Equipement d[’']acc[èe]s aux technologies[^:]*:/i,/III\.\s*DATE DE PRISE/i),
+    depensesEnergie:pdfMoney(pdfSimpleValue(text,/Montant ou fourchette inscrit[^:]*:/i,/Estimation r[ée]alis[ée]e/i)),
+    anneeEnergie:(pdfSimpleValue(text,/Estimation r[ée]alis[ée]e [àa] partir des prix [ée]nerg[ée]tiques[^:]*:/i,/V\.\s*TRAVAUX/i).match(/20\d{2}/)||[""])[0],
+    dateEffet:"",duree:pdfSimpleValue(text,/B\.\s*Dur[ée]e du contrat\s*:/i,/C\.\s*Le cas [ée]ch[ée]ant,?\s*[ÉE]v[ée]nement/i),
+    raisonDureeReduite:pdfSimpleValue(text,/C\.\s*Le cas [ée]ch[ée]ant,?\s*[ÉE]v[ée]nement et raisons justifiant la dur[ée]e r[ée]duite[^:]*:/i,/IV\.\s*CONDITIONS FINANCI[ÈE]RES/i),
+    loyer:"",decretRelocation:"non",encadrement:"non",loyerReference:"",loyerReferenceMajore:"",loyerBase:"",complementLoyer:"",dernierLoyer:"",dateVersementDernier:"",dateDerniereRevision:"",dateRevision:"",irl:"",
+    chargesMode:/[☒■✓✔Xx]\s*Forfait/i.test(pdfSection(text,/B\.\s*Charges r[ée]cup[ée]rables/i,/C\.\s*Le cas [ée]ch[ée]ant/i,1600))?"forfait":/[☒■✓✔Xx]\s*Remboursement sur justificatif/i.test(text)?"justificatif":"provision",
+    chargesMontant:pdfMoney(pdfSimpleValue(text,/Provision mensuelle d[’']un montant de/i,/Forfait d[’']un montant de/i))||pdfMoney(pdfSimpleValue(text,/Forfait d[’']un montant de/i,/Remboursement sur justificatif/i)),
+    contribution:type==="nu"?pdfSimpleValue(text,/Montant et dur[ée]e de la participation du locataire[^:]*:/i,/2\.\s*El[ée]ments propres/i):"",
+    justifContribution:type==="nu"?pdfSimpleValue(text,/El[ée]ments propres [àa] justifier les travaux[^:]*:/i,/D\.\s*Le cas [ée]ch[ée]ant/i):"",
+    assuranceColocAnnuelle:pdfMoney(pdfSimpleValue(text,/Montant total annuel r[ée]cup[ée]rable[^:]*:/i,/2\.\s*Montant r[ée]cup[ée]rable par douzi[èe]me/i)),
+    assuranceColocMensuelle:pdfMoney(pdfSimpleValue(text,/Montant r[ée]cup[ée]rable par douzi[èe]me\s*:/i,/E\.\s*Modalit[ée]s de paiement/i)),
+    depotGarantie:"",
+    honorairesVisiteBailleur:"",honorairesVisiteLocataire:"",honorairesEdlBailleur:"",honorairesEdlLocataire:"",
+    travauxRecents:pdfSimpleValue(text,/Montant et nature des travaux d[’']am[ée]lioration[^:]*:/i,/B\.\s*Le cas [ée]ch[ée]ant,?\s*Majoration/i),
+    majorationTravaux:pdfSimpleValue(text,/Majoration du loyer en cours de bail[^:]*:/i,/C\.\s*Le cas [ée]ch[ée]ant,?\s*Diminution/i),
+    diminutionTravaux:pdfSimpleValue(text,/Diminution de loyer en cours de bail[^:]*:/i,/VI\.\s*GARANTIES/i),
+    sinistre:/a-t-il subi un sinistre[\s\S]{0,250}[☒■✓✔Xx]\s*Oui/i.test(text)?"oui":"non",
+    congeLocataire:pdfSimpleValue(text,/locataire en place a donn[ée] cong[ée] pour le\s*:/i,/Le bailleur s[’']engage/i),
+    conditionsLocataire:"",conditionsBailleur:"",caution:"",annexes:{},avenantCharges:{},avenantInfos:{}
+  };
+  const fees=pdfSection(text,/B\.\s*D[ée]tail et r[ée]partition des honoraires/i,/X\.\s*AUTRES CONDITIONS/i,2600);
+  const nums=[...fees.matchAll(/(\d[\d\s.,]*)\s*€/g)].map(m=>m[1].replace(/\s/g,"").replace(",","."));
+  if(nums.length>=4){out.honorairesVisiteBailleur=nums[0];out.honorairesVisiteLocataire=nums[1];out.honorairesEdlBailleur=nums[2];out.honorairesEdlLocataire=nums[3]}
+  const annexLabels=["Un extrait du règlement concernant la destination de l’immeuble","Le règlement intérieur de l’immeuble","Un document informatif sur les risques de nuisances sonores aériennes","Un diagnostic de performance énergétique","Un constat de risque d‘exposition au plomb","Une copie d’un état mentionnant l’absence ou la présence de matériaux","Un état de l’installation intérieure d’électricité et de gaz","Un état des risques naturels et technologiques","Une notice d’information relative aux droits et obligations","Un état des lieux","Une autorisation préalable de mise en location","Les références aux loyers habituellement constatés","Une grille de vétusté"];
+  const escRe=s=>s.replace(/[.*+?^$()|[\]\\]/g,"\\async function buildLocation(templateBytes,data){");
+  for(const label of annexLabels)out.annexes[label]=new RegExp("[☒■✓✔Xx]\\s*"+escRe(label.slice(0,55)),"i").test(text);
+  return out;
+}
+async function extractPdfPageText(page){
+  const tc=await page.getTextContent();
+  const items=tc.items.filter(x=>x.str&&x.str.trim()).map(x=>({s:x.str.trim(),x:x.transform[4],y:x.transform[5]}));
+  items.sort((a,b)=>Math.abs(b.y-a.y)>2?b.y-a.y:a.x-b.x);
+  const lines=[];let cur=[],lastY=null;
+  for(const it of items){
+    if(lastY===null||Math.abs(it.y-lastY)<=2){cur.push(it);lastY=lastY===null?it.y:(lastY+it.y)/2}
+    else{lines.push(cur.sort((a,b)=>a.x-b.x).map(z=>z.s).join(" "));cur=[it];lastY=it.y}
+  }
+  if(cur.length)lines.push(cur.sort((a,b)=>a.x-b.x).map(z=>z.s).join(" "));
+  return lines.join("\n");
+}
+async function ocrPdfPages(pdf,maxPages){
+  if(!window.Tesseract)throw Error("Le PDF semble scanné et le module OCR n’a pas pu être chargé.");
+  const parts=[];
+  for(let n=1;n<=maxPages;n++){
+    const page=await pdf.getPage(n),viewport=page.getViewport({scale:1.45});
+    const canvas=document.createElement("canvas"),ctx=canvas.getContext("2d",{willReadFrequently:true});
+    canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+    await page.render({canvasContext:ctx,viewport}).promise;
+    const status=document.getElementById("status");if(status)status.textContent="Lecture du PDF scanné — page "+n+"/"+maxPages+"…";
+    const res=await Tesseract.recognize(canvas,"fra",{logger:()=>{}});
+    parts.push(res.data.text||"");canvas.width=1;canvas.height=1;
+  }
+  return parts.join("\n");
+}
+async function extractExistingLeasePdf(bytes){
+  if(!window.pdfjsLib)throw Error("Le lecteur PDF n’a pas pu être chargé. Recharge la page puis réessaie.");
+  const pdf=await pdfjsLib.getDocument({data:bytes}).promise;
+  const pageCount=Math.min(pdf.numPages,16),parts=[];
+  for(let n=1;n<=pageCount;n++){const page=await pdf.getPage(n);parts.push(await extractPdfPageText(page))}
+  let text=parts.join("\n");
+  if(text.replace(/\s/g,"").length<500)text=await ocrPdfPages(pdf,Math.min(pdf.numPages,15));
+  if(text.replace(/\s/g,"").length<250)throw Error("Je n’arrive pas à lire suffisamment de texte dans ce PDF.");
+  return parsePdfLeaseText(text);
+}
+
 async function buildLocation(templateBytes,data){const files=await unzip(templateBytes),xf=files.find(f=>f.name==="word/document.xml");if(!xf)throw Error("Modèle Word incomplet");const doc=new DOMParser().parseFromString(td.decode(xf.data),"application/xml");
 const bailNames=data.bailleurs.map(partyName).filter(Boolean).join(" / "),locNames=data.locataires.map(partyName).filter(Boolean).join(" / ");
 setBox(doc,"Zone de texte 219",0,bailNames);setBox(doc,"Zone de texte 218",0,locNames);
