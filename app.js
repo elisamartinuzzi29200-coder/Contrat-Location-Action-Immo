@@ -13,8 +13,44 @@ function dossierTitle(d){
   return [b&&"Bailleur : "+b,l&&"Locataire : "+l,d.localisation].filter(Boolean).join(" — ")||"Dossier sans nom";
 }
 function newDossier(){
+  $("newDossierModal").classList.remove("hidden");
+}
+function startBlankDossier(){
   currentId="loc_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
-  data=initial();step=0;viewMode="editor";render();
+  data=initial();step=0;viewMode="editor";$("newDossierModal").classList.add("hidden");render();
+}
+function sanitizeImportedData(imported){
+  const clean={...initial(),...imported};
+  clean.locataires=[blankLoc()];
+  clean.dateEffet="";
+  clean.irl="";
+  clean.dateRevision="";
+  clean.loyer="";
+  clean.loyerReference="";
+  clean.loyerReferenceMajore="";
+  clean.loyerBase="";
+  clean.complementLoyer="";
+  clean.dernierLoyer="";
+  clean.dateVersementDernier="";
+  clean.dateDerniereRevision="";
+  clean.depotGarantie="";
+  return clean;
+}
+function importSummaryHtml(d){
+  const b=(d.bailleurs||[]).map(p=>p.type==="morale"?(p.denomination||""):[p.nom,p.prenoms].filter(Boolean).join(" ")).filter(Boolean).join(", ")||"Non détecté";
+  const reusable=[
+    ["Type de contrat",models[d.type+"_"+d.gestion]?.label||""],
+    ["Bailleur(s)",b],
+    ["Adresse / localisation",d.localisation||"Non détectée"],
+    ["Surface",d.surface?d.surface+" m²":"Non détectée"],
+    ["Caractéristiques",d.caracteristiques||"Non détectées"],
+    ["Charges",d.chargesMontant||"Non détectées"],
+    ["Durée",d.duree||"Non détectée"]
+  ];
+  return `<div class="notice">Les informations réutilisables ont été reprises du bail. Vérifie-les avant de générer le nouveau contrat.</div>
+  <div class="importGrid">${reusable.map(([k,v])=>`<div class="importItem"><strong>${esc(k)}</strong><span>${esc(v)}</span></div>`).join("")}</div>
+  <div class="section">Informations volontairement non reprises</div>
+  <div class="notice">Locataire(s), date de prise d’effet du bail, IRL, loyer et éléments liés au loyer, dépôt de garantie.</div>`;
 }
 function saveDossier(){
   if(!currentId)currentId="loc_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
@@ -107,6 +143,30 @@ async function putFile(key,file){const db=await dbOpen(),bytes=new Uint8Array(aw
 async function getFile(key){try{const db=await dbOpen();return await new Promise((res,rej)=>{const tx=db.transaction("files","readonly"),q=tx.objectStore("files").get("model_"+key);q.onsuccess=()=>res(q.result||null);q.onerror=()=>rej(q.error)})}catch{return null}}
 async function renderTemplates(){let h="";for(const [k,v] of Object.entries(models)){const f=await getFile(k);h+=`<div class="templateRow"><div><strong>${v.label}</strong><small>${f?'<span class="ready">Modèle chargé : '+f.name+'</span>':'<span class="missing">Modèle à charger</span>'}</small></div><div><button data-load="${k}">${f?"Remplacer":"Charger"}</button><input type="file" accept=".docx" id="file-${k}"></div></div>`} $("templates").innerHTML=h;document.querySelectorAll("[data-load]").forEach(b=>b.onclick=()=>document.getElementById("file-"+b.dataset.load).click());for(const k of Object.keys(models)){const inp=document.getElementById("file-"+k);inp.onchange=async()=>{if(!inp.files[0])return;await putFile(k,inp.files[0]);$("status").textContent="Modèle enregistré";await renderTemplates()}}}
 $("modelsBtn").onclick=async()=>{$("modelsModal").classList.remove("hidden");await renderTemplates()};$("closeModels").onclick=()=>$("modelsModal").classList.add("hidden");
+$("closeNewDossier").onclick=()=>$("newDossierModal").classList.add("hidden");
+$("blankDossierBtn").onclick=startBlankDossier;
+$("importDossierBtn").onclick=()=>$("existingLeaseInput").click();
+$("closeImportResult").onclick=()=>{$("importResultModal").classList.add("hidden");render()};
+$("existingLeaseInput").onchange=async()=>{
+  const file=$("existingLeaseInput").files[0];if(!file)return;
+  try{
+    $("status").textContent="Lecture du bail existant…";
+    const bytes=new Uint8Array(await file.arrayBuffer());
+    const imported=await extractExistingLease(bytes);
+    data=sanitizeImportedData(imported);
+    currentId="loc_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
+    step=0;viewMode="editor";
+    $("newDossierModal").classList.add("hidden");
+    $("importSummary").innerHTML=importSummaryHtml(data);
+    $("importResultModal").classList.remove("hidden");
+    $("status").textContent="Informations du bail récupérées";
+    $("existingLeaseInput").value="";
+  }catch(e){
+    $("status").textContent="";
+    $("existingLeaseInput").value="";
+    alert("Impossible de récupérer les informations de ce bail : "+e.message+"\n\nUtilise de préférence un bail Word .docx Action Immobilière.");
+  }
+};
 $("saveBtn").onclick=()=>{if(viewMode==="dashboard")return;saveDossier()};$("dashboardBtn").onclick=()=>{viewMode="dashboard";renderDashboard()};$("newBtn").onclick=newDossier;
 $("generateBtn").onclick=async()=>{try{if(viewMode==="dashboard"){alert("Ouvre d’abord un dossier.");return}const key=data.type+"_"+data.gestion,f=await getFile(key);if(!f){$("modelsModal").classList.remove("hidden");await renderTemplates();alert("Charge d’abord le modèle Word : "+models[key].label);return}saveDossier();const bytes=f.bytes instanceof Uint8Array?f.bytes:new Uint8Array(f.bytes),blob=await buildLocation(bytes,data),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="CONTRAT_LOCATION_"+data.type.toUpperCase()+"_"+(data.gestion==="gestion"?"GESTION":"HORS_GESTION")+"_REMPLI.docx";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}catch(e){alert("Impossible de générer le Word : "+e.message)}};
 $("prev").onclick=()=>{if(step>0){step--;render()}};$("next").onclick=()=>{if(step<sections.length-1){step++;render()}};
