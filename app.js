@@ -38,16 +38,31 @@ function sanitizeImportedData(imported){
 }
 function importSummaryHtml(d){
   const b=(d.bailleurs||[]).map(p=>p.type==="morale"?(p.denomination||""):[p.nom,p.prenoms].filter(Boolean).join(" ")).filter(Boolean).join(", ")||"Non détecté";
+  const annexCount=Object.values(d.annexes||{}).filter(Boolean).length;
+  const avenantCount=Object.values(d.avenantCharges||{}).filter(Boolean).length+Object.values(d.avenantInfos||{}).filter(Boolean).length;
   const reusable=[
     ["Type de contrat",models[d.type+"_"+d.gestion]?.label||""],
     ["Bailleur(s)",b],
-    ["Adresse / localisation",d.localisation||"Non détectée"],
+    ["Adresse du logement",d.localisation||"Non détectée"],
+    ["Habitat",d.habitat==="individuel"?"Individuel":"Collectif"],
+    ["Régime",d.regime==="monopropriete"?"Monopropriété":"Copropriété"],
+    ["Période de construction",({"avant1949":"Avant 1949","1949-1974":"1949 à 1974","1975-1989":"1975 à 1989","1989-2005":"1989 à 2005","depuis2005":"Depuis 2005"})[d.periode]||""],
     ["Surface",d.surface?d.surface+" m²":"Non détectée"],
+    ["Pièces principales",d.pieces||"Non détecté"],
     ["Caractéristiques",d.caracteristiques||"Non détectées"],
-    ["Charges",d.chargesMontant||"Non détectées"],
-    ["Durée",d.duree||"Non détectée"]
+    ["Équipements",d.equipements||"Non détectés"],
+    ["Chauffage",[d.chauffageMode==="collectif"?"Collectif":"Individuel",d.chauffageAutre].filter(Boolean).join(" — ")],
+    ["Eau chaude",[d.eauMode==="collectif"?"Collective":"Individuelle",d.eauAutre].filter(Boolean).join(" — ")],
+    ["Technologies",d.technologies||"Non détectées"],
+    ["Dépenses énergétiques",d.depensesEnergie?d.depensesEnergie+" €"+(d.anneeEnergie?" — réf. "+d.anneeEnergie:""):"Non détectées"],
+    ["Durée",d.duree||"Non détectée"],
+    ["Charges",d.chargesMontant?d.chargesMontant+" €":"Non détectées"],
+    ["Honoraires visite/rédaction",d.honorairesVisiteBailleur?d.honorairesVisiteBailleur+" € bailleur / "+(d.honorairesVisiteLocataire||"")+" € locataire":"Non détectés"],
+    ["Honoraires état des lieux",d.honorairesEdlBailleur?d.honorairesEdlBailleur+" € bailleur / "+(d.honorairesEdlLocataire||"")+" € locataire":"Non détectés"],
+    ["Annexes cochées",String(annexCount)],
+    ["Éléments d’avenant cochés",String(avenantCount)]
   ];
-  return `<div class="notice">Les informations réutilisables ont été reprises du bail. Vérifie-les avant de générer le nouveau contrat.</div>
+  return `<div class="notice">Les informations ci-dessous ont été récupérées du bail. Les champs incertains restent vides plutôt que de reprendre du texte standard du contrat.</div>
   <div class="importGrid">${reusable.map(([k,v])=>`<div class="importItem"><strong>${esc(k)}</strong><span>${esc(v)}</span></div>`).join("")}</div>
   <div class="section">Informations volontairement non reprises</div>
   <div class="notice">Locataire(s), date de prise d’effet du bail, IRL, loyer et éléments liés au loyer, dépôt de garantie.</div>`;
