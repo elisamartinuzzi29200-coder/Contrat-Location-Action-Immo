@@ -1,11 +1,50 @@
 const sections=["Type de contrat","Bailleur(s)","Locataire(s)","Logement","Durée","Finances","Honoraires de location","Travaux / garanties","Annexes","Avenant au contrat","Récapitulatif"];
-let step=0;
+let step=0,viewMode="dashboard",currentId=null;
 const models={nu_gestion:{label:"Location nue — gestion"},nu_hors:{label:"Location nue — hors gestion"},meuble_gestion:{label:"Location meublée — gestion"},meuble_hors:{label:"Location meublée — hors gestion"}};
 const blankBailleur=()=>({type:"physique",nom:"",prenoms:"",denomination:"",adresse:"",email:"",tel:""});
 const blankLoc=()=>({nom:"",prenoms:"",naissance:"",lieuNaissance:"",email:"",tel:""});
 const initial=()=>({type:"nu",gestion:"gestion",bailleurs:[blankBailleur()],locataires:[blankLoc()],localisation:"",habitat:"collectif",identifiantFiscal:"",regime:"copropriete",periode:"depuis2005",surface:"",pieces:"",caracteristiques:"",autresParties:"",equipements:"",chauffageMode:"individuel",chauffageAutre:"",eauMode:"individuel",eauAutre:"",destination:"habitation",professionMixte:"",accessoiresPrivatifs:"",partiesCommunes:"",technologies:"",depensesEnergie:"",anneeEnergie:"",dateEffet:"",duree:"",raisonDureeReduite:"",loyer:"",decretRelocation:"non",encadrement:"non",loyerReference:"",loyerReferenceMajore:"",loyerBase:"",complementLoyer:"",dernierLoyer:"",dateVersementDernier:"",dateDerniereRevision:"",dateRevision:"",irl:"",chargesMode:"provision",chargesMontant:"",contribution:"",justifContribution:"",assuranceColocAnnuelle:"",assuranceColocMensuelle:"",depotGarantie:"",honorairesVisiteBailleur:"",honorairesVisiteLocataire:"",honorairesEdlBailleur:"",honorairesEdlLocataire:"",travauxRecents:"",majorationTravaux:"",diminutionTravaux:"",sinistre:"non",congeLocataire:"",conditionsLocataire:"",conditionsBailleur:"",caution:"",annexes:{},avenantCharges:{},avenantInfos:{}});
 let data=initial();
-try{const s=localStorage.getItem("ai-location-form");if(s)data={...initial(),...JSON.parse(s)}}catch{}
+function loadDossiers(){try{return JSON.parse(localStorage.getItem("ai-location-dossiers")||"[]")}catch{return []}}
+function storeDossiers(list){localStorage.setItem("ai-location-dossiers",JSON.stringify(list))}
+function dossierTitle(d){
+  const b=(d.bailleurs||[]).map(p=>p.type==="morale"?(p.denomination||"").trim():((p.nom||"")+" "+(p.prenoms||"")).trim()).filter(Boolean).join(" / ");
+  const l=(d.locataires||[]).map(p=>((p.nom||"")+" "+(p.prenoms||"")).trim()).filter(Boolean).join(" / ");
+  return [b&&"Bailleur : "+b,l&&"Locataire : "+l,d.localisation].filter(Boolean).join(" — ")||"Dossier sans nom";
+}
+function newDossier(){
+  currentId="loc_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
+  data=initial();step=0;viewMode="editor";renderDashboard();
+}
+function saveDossier(){
+  if(!currentId)currentId="loc_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
+  const list=loadDossiers(),idx=list.findIndex(x=>x.id===currentId);
+  const item={id:currentId,title:dossierTitle(data),updatedAt:new Date().toISOString(),data:JSON.parse(JSON.stringify(data))};
+  if(idx>=0)list[idx]=item;else list.unshift(item);
+  storeDossiers(list);
+  $("status").textContent="Dossier sauvegardé";
+}
+function openDossier(id){
+  const item=loadDossiers().find(x=>x.id===id);if(!item)return;
+  currentId=id;data={...initial(),...item.data};step=0;viewMode="editor";render();
+}
+function duplicateDossier(id){
+  const item=loadDossiers().find(x=>x.id===id);if(!item)return;
+  currentId="loc_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
+  data={...initial(),...JSON.parse(JSON.stringify(item.data))};step=0;viewMode="editor";saveDossier();render();
+}
+function deleteDossier(id){
+  if(!confirm("Supprimer définitivement ce dossier de ce navigateur ?"))return;
+  storeDossiers(loadDossiers().filter(x=>x.id!==id));renderDashboard();
+}
+try{
+  const legacy=localStorage.getItem("ai-location-form");
+  if(legacy&&loadDossiers().length===0){
+    const old={...initial(),...JSON.parse(legacy)},id="loc_migration_"+Date.now();
+    storeDossiers([{id,title:dossierTitle(old),updatedAt:new Date().toISOString(),data:old}]);
+    localStorage.removeItem("ai-location-form");
+  }
+}catch{}
 const $=id=>document.getElementById(id),esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 const F=(l,k,t="text",full=false)=>`<div class="field ${full?"full":""}"><label>${l}</label><input type="${t}" data-key="${k}" value="${esc(data[k])}"></div>`;
 const T=(l,k)=>`<div class="field full"><label>${l}</label><textarea data-key="${k}">${esc(data[k])}</textarea></div>`;
@@ -34,7 +73,18 @@ const avenantInfos=[
 "Le preneur ou locataire s’engage à prendre un contrat d’entretien pour la VMC chaque année.",
 "Le preneur ou locataire s’engage à prendre un contrat d’entretien pour la pompe à chaleur chaque année"
 ];
-function render(){ $("nav").innerHTML=sections.map((s,i)=>`<button data-step="${i}" class="${i===step?"active":""}">${i+1}. ${s}</button>`).join("");let h=`<h2>${sections[step]}</h2><p class="hint">Les données saisies servent à remplir automatiquement le bon modèle Word sans modifier ses clauses fixes.</p>`;
+function renderDashboard(){
+  viewMode="dashboard";currentId=null;$("nav").innerHTML="";
+  const list=loadDossiers().sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  $("content").innerHTML=`<div class="dashboardHead"><div><h2>MES DOSSIERS LOCATION</h2><p class="hint">Les dossiers sont enregistrés uniquement dans ce navigateur.</p></div><button class="primary" id="dashNew">+ Nouveau dossier</button></div>
+  ${list.length?`<div class="dossierList">${list.map(x=>`<article class="dossierCard"><div><strong>${esc(x.title)}</strong><small>Dernière modification : ${new Date(x.updatedAt).toLocaleString("fr-FR")}</small></div><div class="dossierActions"><button data-open="${x.id}">Ouvrir</button><button data-duplicate="${x.id}">Dupliquer</button><button class="dangerBtn" data-delete="${x.id}">Supprimer</button></div></article>`).join("")}</div>`:`<div class="emptyState"><strong>Aucun dossier enregistré</strong><p>Crée un dossier de location, sauvegarde-le, puis retrouve-le ici.</p></div>`}`;
+  $("prev").style.display="none";$("next").style.display="none";
+  $("dashNew").onclick=newDossier;
+  document.querySelectorAll("[data-open]").forEach(x=>x.onclick=()=>openDossier(x.dataset.open));
+  document.querySelectorAll("[data-duplicate]").forEach(x=>x.onclick=()=>duplicateDossier(x.dataset.duplicate));
+  document.querySelectorAll("[data-delete]").forEach(x=>x.onclick=()=>deleteDossier(x.dataset.delete));
+}
+function render(){if(viewMode==="dashboard"){renderDashboard();return}$("prev").style.display="";$("next").style.display="";$("nav").innerHTML=sections.map((s,i)=>`<button data-step="${i}" class="${i===step?"active":""}">${i+1}. ${s}</button>`).join("");let h=`<h2>${sections[step]}</h2><p class="hint">Les données saisies servent à remplir automatiquement le bon modèle Word sans modifier ses clauses fixes.</p>`;
 if(step===0)h+=`<div class="choiceGrid"><div class="box"><strong>Type de location</strong><label class="check"><input type="radio" name="type" value="nu" ${data.type==="nu"?"checked":""}>Logement nu</label><label class="check"><input type="radio" name="type" value="meuble" ${data.type==="meuble"?"checked":""}>Logement meublé</label></div><div class="box"><strong>Gestion</strong><label class="check"><input type="radio" name="gestion" value="gestion" ${data.gestion==="gestion"?"checked":""}>Gestion Action Immobilière</label><label class="check"><input type="radio" name="gestion" value="hors" ${data.gestion==="hors"?"checked":""}>Hors gestion</label></div></div><div class="notice">Modèle sélectionné : <strong>${models[data.type+"_"+data.gestion].label}</strong></div>`;
 if(step===1)h+=bailleursHtml();
 if(step===2)h+=locatairesHtml();
@@ -57,7 +107,7 @@ async function putFile(key,file){const db=await dbOpen(),bytes=new Uint8Array(aw
 async function getFile(key){try{const db=await dbOpen();return await new Promise((res,rej)=>{const tx=db.transaction("files","readonly"),q=tx.objectStore("files").get("model_"+key);q.onsuccess=()=>res(q.result||null);q.onerror=()=>rej(q.error)})}catch{return null}}
 async function renderTemplates(){let h="";for(const [k,v] of Object.entries(models)){const f=await getFile(k);h+=`<div class="templateRow"><div><strong>${v.label}</strong><small>${f?'<span class="ready">Modèle chargé : '+f.name+'</span>':'<span class="missing">Modèle à charger</span>'}</small></div><div><button data-load="${k}">${f?"Remplacer":"Charger"}</button><input type="file" accept=".docx" id="file-${k}"></div></div>`} $("templates").innerHTML=h;document.querySelectorAll("[data-load]").forEach(b=>b.onclick=()=>document.getElementById("file-"+b.dataset.load).click());for(const k of Object.keys(models)){const inp=document.getElementById("file-"+k);inp.onchange=async()=>{if(!inp.files[0])return;await putFile(k,inp.files[0]);$("status").textContent="Modèle enregistré";await renderTemplates()}}}
 $("modelsBtn").onclick=async()=>{$("modelsModal").classList.remove("hidden");await renderTemplates()};$("closeModels").onclick=()=>$("modelsModal").classList.add("hidden");
-$("saveBtn").onclick=()=>{localStorage.setItem("ai-location-form",JSON.stringify(data));$("status").textContent="Dossier sauvegardé localement"};
-$("generateBtn").onclick=async()=>{try{const key=data.type+"_"+data.gestion,f=await getFile(key);if(!f){$("modelsModal").classList.remove("hidden");await renderTemplates();alert("Charge d’abord le modèle Word : "+models[key].label);return}localStorage.setItem("ai-location-form",JSON.stringify(data));const bytes=f.bytes instanceof Uint8Array?f.bytes:new Uint8Array(f.bytes),blob=await buildLocation(bytes,data),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="CONTRAT_LOCATION_"+data.type.toUpperCase()+"_"+(data.gestion==="gestion"?"GESTION":"HORS_GESTION")+"_REMPLI.docx";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}catch(e){alert("Impossible de générer le Word : "+e.message)}};
+$("saveBtn").onclick=()=>{if(viewMode==="dashboard")return;saveDossier()};$("dashboardBtn").onclick=()=>{viewMode="dashboard";renderDashboard()};$("newBtn").onclick=newDossier;
+$("generateBtn").onclick=async()=>{try{if(viewMode==="dashboard"){alert("Ouvre d’abord un dossier.");return}const key=data.type+"_"+data.gestion,f=await getFile(key);if(!f){$("modelsModal").classList.remove("hidden");await renderTemplates();alert("Charge d’abord le modèle Word : "+models[key].label);return}saveDossier();const bytes=f.bytes instanceof Uint8Array?f.bytes:new Uint8Array(f.bytes),blob=await buildLocation(bytes,data),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="CONTRAT_LOCATION_"+data.type.toUpperCase()+"_"+(data.gestion==="gestion"?"GESTION":"HORS_GESTION")+"_REMPLI.docx";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}catch(e){alert("Impossible de générer le Word : "+e.message)}};
 $("prev").onclick=()=>{if(step>0){step--;render()}};$("next").onclick=()=>{if(step<sections.length-1){step++;render()}};
 render();
