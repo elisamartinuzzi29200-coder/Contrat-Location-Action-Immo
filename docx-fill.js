@@ -387,47 +387,6 @@ async function extractExistingLeasePdf(bytes){
   return parseAgencyPdfPages(parts);
 }
 
-async function buildLocation(templateBytes,data){");
-  for(const label of annexLabels)out.annexes[label]=new RegExp("[☒■✓✔Xx]\\s*"+escRe(label.slice(0,55)),"i").test(text);
-  return out;
-}
-async function extractPdfPageText(page){
-  const tc=await page.getTextContent();
-  const items=tc.items.filter(x=>x.str&&x.str.trim()).map(x=>({s:x.str.trim(),x:x.transform[4],y:x.transform[5]}));
-  items.sort((a,b)=>Math.abs(b.y-a.y)>2?b.y-a.y:a.x-b.x);
-  const lines=[];let cur=[],lastY=null;
-  for(const it of items){
-    if(lastY===null||Math.abs(it.y-lastY)<=2){cur.push(it);lastY=lastY===null?it.y:(lastY+it.y)/2}
-    else{lines.push(cur.sort((a,b)=>a.x-b.x).map(z=>z.s).join(" "));cur=[it];lastY=it.y}
-  }
-  if(cur.length)lines.push(cur.sort((a,b)=>a.x-b.x).map(z=>z.s).join(" "));
-  return lines.join("\n");
-}
-async function ocrPdfPages(pdf,maxPages){
-  if(!window.Tesseract)throw Error("Le PDF semble scanné et le module OCR n’a pas pu être chargé.");
-  const parts=[];
-  for(let n=1;n<=maxPages;n++){
-    const page=await pdf.getPage(n),viewport=page.getViewport({scale:1.45});
-    const canvas=document.createElement("canvas"),ctx=canvas.getContext("2d",{willReadFrequently:true});
-    canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
-    await page.render({canvasContext:ctx,viewport}).promise;
-    const status=document.getElementById("status");if(status)status.textContent="Lecture du PDF scanné — page "+n+"/"+maxPages+"…";
-    const res=await Tesseract.recognize(canvas,"fra",{logger:()=>{}});
-    parts.push(res.data.text||"");canvas.width=1;canvas.height=1;
-  }
-  return parts.join("\n");
-}
-async function extractExistingLeasePdf(bytes){
-  if(!window.pdfjsLib)throw Error("Le lecteur PDF n’a pas pu être chargé. Recharge la page puis réessaie.");
-  const pdf=await pdfjsLib.getDocument({data:bytes}).promise;
-  const pageCount=Math.min(pdf.numPages,16),parts=[];
-  for(let n=1;n<=pageCount;n++){const page=await pdf.getPage(n);parts.push(await extractPdfPageText(page))}
-  let text=parts.join("\n");
-  if(text.replace(/\s/g,"").length<500)text=await ocrPdfPages(pdf,Math.min(pdf.numPages,15));
-  if(text.replace(/\s/g,"").length<250)throw Error("Je n’arrive pas à lire suffisamment de texte dans ce PDF.");
-  return parsePdfLeaseText(text);
-}
-
 async function buildLocation(templateBytes,data){const files=await unzip(templateBytes),xf=files.find(f=>f.name==="word/document.xml");if(!xf)throw Error("Modèle Word incomplet");const doc=new DOMParser().parseFromString(td.decode(xf.data),"application/xml");
 const bailNames=data.bailleurs.map(partyName).filter(Boolean).join(" / "),locNames=data.locataires.map(partyName).filter(Boolean).join(" / ");
 setBox(doc,"Zone de texte 219",0,bailNames);setBox(doc,"Zone de texte 218",0,locNames);
