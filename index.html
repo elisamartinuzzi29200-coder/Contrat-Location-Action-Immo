@@ -5,5 +5,14 @@
 <header><div><h1>CONTRATS DE LOCATION</h1><p>Action Immobilière — un seul formulaire, 4 modèles Word</p></div>
 <div class="topActions"><span id="status"></span><button id="modelsBtn">Modèles Word</button><button id="dashboardBtn">Mes dossiers</button><button id="newBtn">Nouveau dossier</button><button id="saveBtn">Sauvegarder</button><button class="primary" id="generateBtn">Générer le Word</button></div></header>
 <div class="layout"><aside id="nav"></aside><main><section id="content"></section><footer><button id="prev">Précédent</button><button id="next">Suivant</button></footer></main></div>
+<div id="newDossierModal" class="modal hidden"><div class="modalCard smallModal"><div class="modalHead"><h2>Nouveau dossier</h2><button id="closeNewDossier">Fermer</button></div>
+<p class="hint">Choisis comment démarrer le nouveau contrat.</p>
+<div class="startChoices">
+  <button class="startCard" id="blankDossierBtn"><strong>Créer un contrat vierge</strong><span>Commencer avec un formulaire vide.</span></button>
+  <button class="startCard" id="importDossierBtn"><strong>Créer à partir d’un bail existant</strong><span>Récupérer les informations réutilisables d’un bail Word existant.</span></button>
+</div>
+<input id="existingLeaseInput" type="file" accept=".docx" hidden>
+</div></div>
+<div id="importResultModal" class="modal hidden"><div class="modalCard"><div class="modalHead"><h2>Informations récupérées</h2><button id="closeImportResult">Continuer</button></div><div id="importSummary"></div></div></div>
 <div id="modelsModal" class="modal hidden"><div class="modalCard"><div class="modalHead"><h2>Modèles Word</h2><button id="closeModels">Fermer</button></div><p class="hint">À charger une seule fois sur chaque navigateur. Les fichiers restent stockés localement.</p><div id="templates"></div></div></div>
 <script src="./docx-fill.js"></script><script src="./app.js"></script></body></html>
