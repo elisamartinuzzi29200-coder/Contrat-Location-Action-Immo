@@ -241,57 +241,153 @@ function parsePdfBailleur(text){
   const parts=ident.split(/\s+/).filter(Boolean);if(!parts.length)return [leaseBlankParty()];
   return [{type:"physique",nom:parts.shift()||"",prenoms:parts.join(" "),denomination:"",adresse,email,tel}];
 }
-function parsePdfLeaseText(raw){
-  const text=pdfClean(raw);
-  const type=/CONTRAT DE LOCATION\s+LOGEMENT\s+MEUBL[ÉE]|LOGEMENT\s+MEUBL[ÉE]/i.test(text)?"meuble":"nu";
-  const gestion=/mandataire gestionnaire[\s\S]{0,700}ACTION IMMOBILIERE/i.test(text)?"gestion":"hors";
-  const habitatBlock=pdfSection(text,/Type d[’']habitat\s*:/i,/Identifiant fiscal/i,300);
-  const regimeBlock=pdfSection(text,/R[ée]gime juridique de l[’']immeuble\s*:/i,/P[ée]riode de construction/i,300);
-  const periodBlock=pdfSection(text,/P[ée]riode de construction\s*:/i,/Surface habitable/i,450);
-  const destinationBlock=pdfSection(text,/B\.\s*Destination des locaux/i,/C\.\s*Le cas [ée]ch[ée]ant/i,700);
-  const chauffageBlock=pdfSection(text,/Modalit[ée] de r[ée]partition du chauffage/i,/Modalit[ée] de r[ée]partition de l[’']eau chaude/i,350);
-  const eauBlock=pdfSection(text,/Modalit[ée] de r[ée]partition de l[’']eau chaude sanitaire/i,/Rappel\s*:/i,350);
+
+function pdfEscRe(s){return String(s||"").replace(/[.*+?^$()|[\]\\]/g,"\\$&")}
+function pdfLines(page){return String(page||"").split(/\n+/).map(x=>x.trim()).filter(Boolean)}
+function pdfLineAfter(page,re){
+  const lines=pdfLines(page);
+  for(let i=0;i<lines.length;i++){
+    const m=lines[i].match(re);
+    if(m){
+      const same=lines[i].slice((m.index||0)+m[0].length).replace(/^[\s:;-]+/,"").trim();
+      if(same)return same;
+      return lines[i+1]||"";
+    }
+  }
+  return "";
+}
+function pdfBetweenLines(page,startRe,endRe,maxLines=6){
+  const lines=pdfLines(page);let s=-1,e=lines.length;
+  for(let i=0;i<lines.length;i++){
+    if(s<0&&startRe.test(lines[i]))s=i;
+    else if(s>=0&&endRe&&endRe.test(lines[i])){e=i;break}
+  }
+  if(s<0)return "";
+  const first=lines[s].replace(startRe,"").replace(/^[\s:;-]+/,"").trim();
+  return (first?[first]:[]).concat(lines.slice(s+1,Math.min(e,s+1+maxLines))).join(" ").replace(/\s+/g," ").trim();
+}
+function parseAgencyPdfPages(pages){
+  const p=n=>pages[n-1]||"";
+  const type=/LOGEMENT\s+MEUBL[ÉE]/i.test(p(1)+p(2))?"meuble":"nu";
+  const gestion=/Repr[ée]sent[ée]?\(s\)? par Action Immobili[èe]re/i.test(p(2))||/Lieu de paiement[\s\S]{0,250}[☒■✓✔Xx]\s*Agence Action Immobili[èe]re/i.test(p(7))?"gestion":"hors";
+
+  let bailleurName="";
+  let m=p(1).match(/Nom\(s\)\s*bailleur\(s\)\s*:\s*([^\n]+)/i);
+  if(m)bailleurName=m[1].trim();
+  if(!bailleurName){m=p(2).match(/Nom et pr[ée]nom,?\s*ou d[ée]nomination du bailleur[^:\n]*:\s*([^\n]+)/i);if(m)bailleurName=m[1].trim()}
+  const morale=/[☒■✓✔Xx]\s*Personne morale/i.test(p(2))||/\b(SCI|SARL|SAS|EURL|SASU)\b/i.test(bailleurName);
+  const bailleur=leaseBlankParty();
+  if(morale){bailleur.type="morale";bailleur.denomination=bailleurName}
+  else{const parts=bailleurName.replace(/^(M\.?|Mme|Monsieur|Madame)\s+/i,"").split(/\s+/).filter(Boolean);bailleur.nom=parts.shift()||"";bailleur.prenoms=parts.join(" ")}
+
+  let localisation=pdfBetweenLines(p(3),/Localisation du logement[^:]*:/i,/Type d[’']habitat/i,4);
+  localisation=pdfUsefulValue(localisation,220);
+
+  let identifiantFiscal=pdfBetweenLines(p(4),/Identifiant fiscal du logement[^:]*:/i,/R[ée]gime juridique/i,2);
+  identifiantFiscal=pdfUsefulValue(identifiantFiscal,80);
+
+  const sm=p(4).match(/(\d+(?:[.,]\d+)?)\s*M[²2]\s+(\d+)/i);
+  const surface=sm?sm[1].replace(",","."):"",pieces=sm?sm[2]:"";
+  let caracteristiques=pdfBetweenLines(p(4),/Caract[ée]ristiques du logement\s*:/i,/Autres parties du logement/i,4);
+  caracteristiques=pdfUsefulValue(caracteristiques.replace(/[☐☒□■].*$/,"").trim(),240);
+  let equipements=pdfBetweenLines(p(4),/El[ée]ments d.?[ée]quipements du logement\s*:/i,/Modalit[ée] de r[ée]partition du chauffage/i,5);
+  equipements=equipements.split(/\s+(?=[☐☒□■])/)[0].trim();
+  equipements=pdfUsefulValue(equipements,180);
+
+  const chauffageBlock=pdfBetweenLines(p(4),/Modalit[ée] de r[ée]partition du chauffage/i,/Modalit[ée] de r[ée]partition de l.?eau chaude/i,4);
+  const eauBlock=pdfBetweenLines(p(4),/Modalit[ée] de r[ée]partition de l.?eau chaude sanitaire/i,/Rappel\s*:/i,4);
+  const chauffageMode=/[☒■✓✔Xx]\s*Collectif/i.test(chauffageBlock)?"collectif":"individuel";
+  const eauMode=/[☒■✓✔Xx]\s*Collectif/i.test(eauBlock)?"collectif":"individuel";
+  const chauffageAutre=/[☒■✓✔Xx]\s*Gaz/i.test(chauffageBlock)?"Gaz":/[☒■✓✔Xx]\s*[ÉE]lectrique/i.test(chauffageBlock)?"Électrique":"";
+  const eauAutre=/[☒■✓✔Xx]\s*Gaz/i.test(eauBlock)?"Gaz":/[☒■✓✔Xx]\s*[ÉE]lectrique/i.test(eauBlock)?"Électrique":"";
+
+  let technologies=pdfBetweenLines(p(5),/Equipement d.?acc[èe]s aux technologies[\s\S]*?:/i,/F\.\s*D[ée]penses [ée]nerg[ée]tiques/i,4);
+  technologies=pdfUsefulValue(technologies,120);
+  const energy=p(5).match(/(\d[\d\s.,]*\s*-\s*\d[\d\s.,]*)\s*€/i);
+  const years=p(5).match(/\b20\d{2}\b/g)||[];
+
+  let duree=pdfLineAfter(p(6),/B\.\s*Dur[ée]e du contrat\s*:/i);
+  if(!/^\d+\s*(?:an|ans|mois)\b/i.test(duree)){m=p(6).match(/\b(\d+\s*(?:an|ans|mois))\b/i);duree=m?m[1]:""}
+
+  let chargesMontant="";
+  m=p(8).match(/Charges r[ée]cup[ée]rables\s+(\d+(?:[.,]\d+)?)\s*€/i);
+  if(m)chargesMontant=m[1].replace(",",".");
+  const fees=p(10);
+  const visite=fees.match(/Visite, constitution du dossier et r[ée]daction\s+(\d+(?:[.,]\d+)?)\s*€\s+(\d+(?:[.,]\d+)?)\s*€/i)||[];
+  const edl=fees.match(/R[ée]alisation de l.?[ée]tat des lieux d.?entr[ée]e\s+(\d+(?:[.,]\d+)?)\s*€\s+(\d+(?:[.,]\d+)?)\s*€/i)||[];
+
   const out={
-    type,gestion,bailleurs:parsePdfBailleur(text),locataires:[leaseBlankParty()],
-    localisation:pdfShort(text,/Localisation du logement[^:]*:/i,/Type d[’\']habitat\s*:/i,220),
-    habitat:/[☒■✓✔Xx]\s*individuel/i.test(habitatBlock)?"individuel":"collectif",
-    identifiantFiscal:pdfShort(text,/Identifiant fiscal du logement[^:]*:/i,/R[ée]gime juridique/i,80),
-    regime:/[☒■✓✔Xx]\s*monopropri[ée]t[ée]/i.test(regimeBlock)?"monopropriete":"copropriete",
-    periode:/[☒■✓✔Xx]\s*Avant 1949/i.test(periodBlock)?"avant1949":/[☒■✓✔Xx]\s*de 1949/i.test(periodBlock)?"1949-1974":/[☒■✓✔Xx]\s*de 1975/i.test(periodBlock)?"1975-1989":/[☒■✓✔Xx]\s*de 1989/i.test(periodBlock)?"1989-2005":"depuis2005",
-    surface:(pdfSimpleValue(text,/Surface habitable\s*:/i,/Nombre de pi[èe]ces principales/i).match(/[\d.,]+/)||[""])[0],
-    pieces:(pdfSimpleValue(text,/Nombre de pi[èe]ces principales/i,/Caract[ée]ristiques du logement/i).match(/\d+/)||[""])[0],
-    caracteristiques:pdfShort(text,/Caract[ée]ristiques du logement\s*:/i,/Le cas [ée]ch[ée]ant Autres parties du logement/i,240),
-    autresParties:pdfShort(text,/Le cas [ée]ch[ée]ant Autres parties du logement\s*:/i,/Le cas [ée]ch[ée]ant El[ée]ments d[’\']?[ée]quipements du logement/i,180),
-    equipements:pdfShort(text,/Le cas [ée]ch[ée]ant El[ée]ments d[’\']?[ée]quipements du logement\s*:/i,/Modalit[ée] de r[ée]partition du chauffage/i,220),
-    chauffageMode:/[☒■✓✔Xx]\s*Collectif/i.test(chauffageBlock)?"collectif":"individuel",chauffageAutre:"",
-    eauMode:/[☒■✓✔Xx]\s*Collectif/i.test(eauBlock)?"collectif":"individuel",eauAutre:"",
-    destination:/[☒■✓✔Xx]\s*[ÀA] usage mixte/i.test(destinationBlock)?"mixte":"habitation",
-    professionMixte:pdfShort(destinationBlock,/profession de\s*:/i,/Le LOCATAIRE/i,120),
-    accessoiresPrivatifs:pdfShort(text,/D[ée]signation des locaux et [ée]quipements accessoires[^:]*:/i,/D\.\s*Le cas [ée]ch[ée]ant/i,180),
-    partiesCommunes:pdfShort(text,/Enum[ée]ration des locaux, parties, [ée]quipements et accessoires[^:]*:/i,/E\.\s*Le cas [ée]ch[ée]ant/i,180),
-    technologies:pdfShort(text,/Equipement d[’\']acc[èe]s aux technologies[^:]*:/i,/III\.\s*DATE DE PRISE/i,160),
-    depensesEnergie:pdfMoney(pdfSimpleValue(text,/Montant ou fourchette inscrit[^:]*:/i,/Estimation r[ée]alis[ée]e/i)),
-    anneeEnergie:(pdfSimpleValue(text,/Estimation r[ée]alis[ée]e [àa] partir des prix [ée]nerg[ée]tiques[^:]*:/i,/V\.\s*TRAVAUX/i).match(/20\d{2}/)||[""])[0],
-    dateEffet:"",duree:pdfShort(text,/B\.\s*Dur[ée]e du contrat\s*:/i,/C\.\s*Le cas [ée]ch[ée]ant,?\s*[ÉE]v[ée]nement/i,80),
-    raisonDureeReduite:pdfShort(text,/C\.\s*Le cas [ée]ch[ée]ant,?\s*[ÉE]v[ée]nement et raisons justifiant la dur[ée]e r[ée]duite[^:]*:/i,/IV\.\s*CONDITIONS FINANCI[ÈE]RES/i,180),
-    loyer:"",decretRelocation:"non",encadrement:"non",loyerReference:"",loyerReferenceMajore:"",loyerBase:"",complementLoyer:"",dernierLoyer:"",dateVersementDernier:"",dateDerniereRevision:"",dateRevision:"",irl:"",
-    chargesMode:/[☒■✓✔Xx]\s*Forfait/i.test(pdfSection(text,/B\.\s*Charges r[ée]cup[ée]rables/i,/C\.\s*Le cas [ée]ch[ée]ant/i,1600))?"forfait":/[☒■✓✔Xx]\s*Remboursement sur justificatif/i.test(text)?"justificatif":"provision",
-    chargesMontant:pdfMoney(pdfSimpleValue(text,/Provision mensuelle d[’']un montant de/i,/Forfait d[’']un montant de/i))||pdfMoney(pdfSimpleValue(text,/Forfait d[’']un montant de/i,/Remboursement sur justificatif/i)),
-    contribution:type==="nu"?pdfShort(text,/Montant et dur[ée]e de la participation du locataire[^:]*:/i,/2\.\s*El[ée]ments propres/i,120):"",
-    justifContribution:type==="nu"?pdfShort(text,/El[ée]ments propres [àa] justifier les travaux[^:]*:/i,/D\.\s*Le cas [ée]ch[ée]ant/i,180):"",
-    assuranceColocAnnuelle:pdfMoney(pdfSimpleValue(text,/Montant total annuel r[ée]cup[ée]rable[^:]*:/i,/2\.\s*Montant r[ée]cup[ée]rable par douzi[èe]me/i)),
-    assuranceColocMensuelle:pdfMoney(pdfSimpleValue(text,/Montant r[ée]cup[ée]rable par douzi[èe]me\s*:/i,/E\.\s*Modalit[ée]s de paiement/i)),
-    depotGarantie:"",
-    honorairesVisiteBailleur:"",honorairesVisiteLocataire:"",honorairesEdlBailleur:"",honorairesEdlLocataire:"",
-    travauxRecents:pdfShort(text,/Montant et nature des travaux d[’\']am[ée]lioration[^:]*:/i,/B\.\s*Le cas [ée]ch[ée]ant,?\s*Majoration/i,220),
-    majorationTravaux:pdfShort(text,/Majoration du loyer en cours de bail[^:]*:/i,/C\.\s*Le cas [ée]ch[ée]ant,?\s*Diminution/i,160),
-    diminutionTravaux:pdfShort(text,/Diminution de loyer en cours de bail[^:]*:/i,/VI\.\s*GARANTIES/i,160),
-    sinistre:/a-t-il subi un sinistre[\s\S]{0,250}[☒■✓✔Xx]\s*Oui/i.test(text)?"oui":"non",
-    congeLocataire:pdfShort(text,/locataire en place a donn[ée] cong[ée] pour le\s*:/i,/Le bailleur s[’\']engage/i,40),
-    conditionsLocataire:"",conditionsBailleur:"",caution:"",annexes:{},avenantCharges:{},avenantInfos:{}
+    type,gestion,bailleurs:[bailleur],locataires:[leaseBlankParty()],localisation,
+    habitat:/[☒■✓✔Xx]\s*individuel/i.test(p(3))?"individuel":"collectif",identifiantFiscal,
+    regime:/[☒■✓✔Xx]\s*monopropri[ée]t[ée]/i.test(p(4))?"monopropriete":"copropriete",
+    periode:/[☒■✓✔Xx]\s*Avant 1949/i.test(p(4))?"avant1949":/[☒■✓✔Xx]\s*de 1949/i.test(p(4))?"1949-1974":/[☒■✓✔Xx]\s*de 1975/i.test(p(4))?"1975-1989":/[☒■✓✔Xx]\s*de 1989/i.test(p(4))?"1989-2005":"depuis2005",
+    surface,pieces,caracteristiques,autresParties:"",equipements,chauffageMode,chauffageAutre,eauMode,eauAutre,
+    destination:/[☒■✓✔Xx]\s*[ÀA] usage mixte/i.test(p(5))?"mixte":"habitation",professionMixte:"",accessoiresPrivatifs:"",partiesCommunes:"",technologies,
+    depensesEnergie:energy?energy[1].replace(/\s+/g," ").trim():"",anneeEnergie:years.length?years[years.length-1]:"",
+    dateEffet:"",duree,raisonDureeReduite:"",loyer:"",decretRelocation:"non",encadrement:"non",loyerReference:"",loyerReferenceMajore:"",loyerBase:"",complementLoyer:"",dernierLoyer:"",dateVersementDernier:"",dateDerniereRevision:"",dateRevision:"",irl:"",
+    chargesMode:/[☒■✓✔Xx]\s*Forfait/i.test(p(7))?"forfait":/[☒■✓✔Xx]\s*Remboursement sur justificatif/i.test(p(7))?"justificatif":"provision",chargesMontant,
+    contribution:"",justifContribution:"",assuranceColocAnnuelle:"",assuranceColocMensuelle:"",depotGarantie:"",
+    honorairesVisiteBailleur:visite[1]?visite[1].replace(",","."):"",honorairesVisiteLocataire:visite[2]?visite[2].replace(",","."):"",
+    honorairesEdlBailleur:edl[1]?edl[1].replace(",","."):"",honorairesEdlLocataire:edl[2]?edl[2].replace(",","."):"",
+    travauxRecents:"",majorationTravaux:"",diminutionTravaux:"",sinistre:/a-t-il subi un sinistre[\s\S]{0,300}[☒■✓✔Xx]\s*Oui/i.test(p(10))?"oui":"non",
+    congeLocataire:"",conditionsLocataire:"",conditionsBailleur:"",caution:"",annexes:{},avenantCharges:{},avenantInfos:{}
   };
-  // Honoraires laissés vides si le PDF ne permet pas de distinguer sans ambiguïté les cellules du tableau.\n  const annexLabels=["Un extrait du règlement concernant la destination de l’immeuble","Le règlement intérieur de l’immeuble","Un document informatif sur les risques de nuisances sonores aériennes","Un diagnostic de performance énergétique","Un constat de risque d‘exposition au plomb","Une copie d’un état mentionnant l’absence ou la présence de matériaux","Un état de l’installation intérieure d’électricité et de gaz","Un état des risques naturels et technologiques","Une notice d’information relative aux droits et obligations","Un état des lieux","Une autorisation préalable de mise en location","Les références aux loyers habituellement constatés","Une grille de vétusté"];
-  const escRe=s=>s.replace(/[.*+?^$()|[\]\\]/g,"\\async function buildLocation(templateBytes,data){");
+
+  const annexMap=[
+    ["Un extrait du règlement concernant la destination de l’immeuble","extrait du règlement concernant la destination"],["Le règlement intérieur de l’immeuble","règlement intérieur de l’immeuble"],
+    ["Un document informatif sur les risques de nuisances sonores aériennes","risques de nuisances sonores aériennes"],["Un diagnostic de performance énergétique","diagnostic de performance énergétique"],
+    ["Un constat de risque d‘exposition au plomb","constat de risque"],["Une copie d’un état mentionnant l’absence ou la présence de matériaux","absence ou la présence de matériaux"],
+    ["Un état de l’installation intérieure d’électricité et de gaz","installation intérieure d’électricité et de gaz"],["Un état des risques naturels et technologiques","risques naturels et technologiques"],
+    ["Une notice d’information relative aux droits et obligations","notice d’information relative aux droits"],["Un état des lieux","état des lieux"],
+    ["Une autorisation préalable de mise en location","autorisation préalable de mise en location"],["Les références aux loyers habituellement constatés","références aux loyers habituellement constatés"],["Une grille de vétusté","grille de vétusté"]
+  ];
+  for(const [label,snippet] of annexMap)out.annexes[label]=new RegExp("[☒■✓✔Xx]\\s*[^\\n]{0,20}"+pdfEscRe(snippet),"i").test(p(12));
+
+  const av=p(15);
+  const ac=[["L’eau (elle sera réajustée en plus ou en moins selon les consommations réelles)","L’eau"],["L’électricité","L’électricité"],["Le gaz","Le gaz"],["Internet","Internet"],["La minuterie","La minuterie"],["Le ménage des parties communes","Le ménage des parties communes"],["L’ascenseur","L’ascenseur"],["Le Contrat d’entretien de la chaudière","Contrat d’entretien de la chaudière"]];
+  for(const [label,snippet] of ac)out.avenantCharges[label]=new RegExp("[☒■✓✔Xx]\\s*"+pdfEscRe(snippet),"i").test(av);
+  const ai=[["La taxe d’ordure ménagère sera à payer par le locataire.","taxe d’ordure ménagère"],["Le compteur électrique et/ou gaz devra être ouvert au nom du locataire.","compteur électrique et/ou gaz"],["Le compteur d’eau devra être ouvert au nom du locataire.","compteur d’eau"],["La taxe d'habitation sera due par le locataire au 1er janvier.","taxe d'habitation"],["Le locataire devra contracter une police d'assurance incendie et dégâts des eaux avant la remise des clés et s'engage à fournir au bailleur un justificatif annuel.","police d'assurance incendie"],["Le locataire s’engage à prendre un contrat d’entretien pour la chaudière et à fournir au bailleur un justificatif annuel.","contrat d’entretien pour la chaudière"],["Le locataire s’engage à faire un ramonage annuel de la cheminée ou du poêle à bois et à fournir au bailleur un justificatif annuel.","ramonage annuel"],["Le locataire s’engage à entretenir le jardin et les abords de la maison (pelouses, haies, plantations, terrasse)","entretenir le jardin"],["Le locataire s’engage à fournir une pile pour le détecteur de fumée, lors de l’état des lieux de sortie si celle-ci ne fonctionne plus.","pile pour le détecteur de fumée"],["Le preneur ou locataire s’engage à prendre un contrat d’entretien pour la VMC chaque année.","contrat d’entretien pour la VMC"],["Le preneur ou locataire s’engage à prendre un contrat d’entretien pour la pompe à chaleur chaque année","contrat d’entretien pour la pompe à chaleur"]];
+  for(const [label,snippet] of ai)out.avenantInfos[label]=new RegExp("[☒■✓✔Xx]\\s*"+pdfEscRe(snippet),"i").test(av);
+  return out;
+}
+function parsePdfLeaseText(raw){
+  const text=pdfClean(raw),o={type:/LOGEMENT\s+MEUBL[ÉE]/i.test(text)?"meuble":"nu",gestion:/Action Immobili[èe]re/i.test(text)?"gestion":"hors"};
+  return Object.assign({bailleurs:[leaseBlankParty()],locataires:[leaseBlankParty()],localisation:"",habitat:"collectif",identifiantFiscal:"",regime:"copropriete",periode:"depuis2005",surface:"",pieces:"",caracteristiques:"",autresParties:"",equipements:"",chauffageMode:"individuel",chauffageAutre:"",eauMode:"individuel",eauAutre:"",destination:"habitation",professionMixte:"",accessoiresPrivatifs:"",partiesCommunes:"",technologies:"",depensesEnergie:"",anneeEnergie:"",dateEffet:"",duree:"",raisonDureeReduite:"",loyer:"",decretRelocation:"non",encadrement:"non",loyerReference:"",loyerReferenceMajore:"",loyerBase:"",complementLoyer:"",dernierLoyer:"",dateVersementDernier:"",dateDerniereRevision:"",dateRevision:"",irl:"",chargesMode:"provision",chargesMontant:"",contribution:"",justifContribution:"",assuranceColocAnnuelle:"",assuranceColocMensuelle:"",depotGarantie:"",honorairesVisiteBailleur:"",honorairesVisiteLocataire:"",honorairesEdlBailleur:"",honorairesEdlLocataire:"",travauxRecents:"",majorationTravaux:"",diminutionTravaux:"",sinistre:"non",congeLocataire:"",conditionsLocataire:"",conditionsBailleur:"",caution:"",annexes:{},avenantCharges:{},avenantInfos:{}},o);
+}
+async function extractPdfPageText(page){
+  const tc=await page.getTextContent();
+  const items=tc.items.filter(x=>x.str&&x.str.trim()).map(x=>({s:x.str.trim(),x:x.transform[4],y:x.transform[5]}));
+  items.sort((a,b)=>Math.abs(b.y-a.y)>2?b.y-a.y:a.x-b.x);
+  const lines=[];let cur=[],lastY=null;
+  for(const it of items){
+    if(lastY===null||Math.abs(it.y-lastY)<=2){cur.push(it);lastY=lastY===null?it.y:(lastY+it.y)/2}
+    else{lines.push(cur.sort((a,b)=>a.x-b.x).map(z=>z.s).join(" "));cur=[it];lastY=it.y}
+  }
+  if(cur.length)lines.push(cur.sort((a,b)=>a.x-b.x).map(z=>z.s).join(" "));
+  return lines.join("\n");
+}
+async function ocrPdfPages(pdf,maxPages){
+  if(!window.Tesseract)throw Error("Le PDF semble scanné et le module OCR n’a pas pu être chargé.");
+  const parts=[];
+  for(let n=1;n<=maxPages;n++){
+    const page=await pdf.getPage(n),viewport=page.getViewport({scale:1.45}),canvas=document.createElement("canvas"),ctx=canvas.getContext("2d",{willReadFrequently:true});
+    canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+    await page.render({canvasContext:ctx,viewport}).promise;
+    const status=document.getElementById("status");if(status)status.textContent="Lecture du PDF scanné — page "+n+"/"+maxPages+"…";
+    const res=await Tesseract.recognize(canvas,"fra",{logger:()=>{}});parts.push(res.data.text||"");canvas.width=1;canvas.height=1;
+  }
+  return parts.join("\n");
+}
+async function extractExistingLeasePdf(bytes){
+  if(!window.pdfjsLib)throw Error("Le lecteur PDF n’a pas pu être chargé. Recharge la page puis réessaie.");
+  const pdf=await pdfjsLib.getDocument({data:bytes}).promise,pageCount=Math.min(pdf.numPages,15),parts=[];
+  for(let n=1;n<=pageCount;n++){const page=await pdf.getPage(n);parts.push(await extractPdfPageText(page))}
+  const joined=parts.join("\n");
+  if(joined.replace(/\s/g,"").length<500)return parsePdfLeaseText(await ocrPdfPages(pdf,Math.min(pdf.numPages,15)));
+  return parseAgencyPdfPages(parts);
+}
+
+async function buildLocation(templateBytes,data){");
   for(const label of annexLabels)out.annexes[label]=new RegExp("[☒■✓✔Xx]\\s*"+escRe(label.slice(0,55)),"i").test(text);
   return out;
 }
