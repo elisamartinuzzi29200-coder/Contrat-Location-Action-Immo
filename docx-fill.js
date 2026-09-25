@@ -12,10 +12,63 @@ function setTableCell(doc,ti,ri,ci,value){const tbl=doc.getElementsByTagNameNS(W
 function partyName(p){return p.type==="morale"?(p.denomination||"").trim():((p.nom||"")+" "+(p.prenoms||"")).trim()}
 function bailleurText(p){return p.type==="morale"?`${p.denomination||"___"}, personne morale, siège social : ${p.adresse||"___"}`:`${(p.nom||"").toUpperCase()} ${p.prenoms||""}, demeurant ${p.adresse||"___"}`}
 function money(v){return String(v||"").trim()}
+function num(v){return Number(String(v||"").replace(/\s/g,"").replace(/€/g,"").replace(",",".").replace(/[^0-9.-]/g,""))||0}
+function numberToFrench(n){
+  n=Math.round(n);
+  if(n===0)return "zéro";
+  const u=["","un","deux","trois","quatre","cinq","six","sept","huit","neuf","dix","onze","douze","treize","quatorze","quinze","seize"];
+  const under100=x=>{
+    if(x<17)return u[x];
+    if(x<20)return "dix-"+u[x-10];
+    const t=Math.floor(x/10),r=x%10;
+    if(t===7)return "soixante-"+under100(10+r);
+    if(t===9)return "quatre-vingt-"+under100(10+r);
+    const names={2:"vingt",3:"trente",4:"quarante",5:"cinquante",6:"soixante",8:"quatre-vingt"};
+    let s=names[t]||"";
+    if(r===1&&t!==8)s+=" et un"; else if(r)s+="-"+u[r];
+    if(t===8&&r===0)s+="s";
+    return s;
+  };
+  const under1000=x=>{
+    if(x<100)return under100(x);
+    const h=Math.floor(x/100),r=x%100;
+    let s=h===1?"cent":u[h]+" cent";
+    if(r===0&&h>1)s+="s";
+    return r?s+" "+under100(r):s;
+  };
+  const parts=[];
+  const milliards=Math.floor(n/1e9);n%=1e9;
+  const millions=Math.floor(n/1e6);n%=1e6;
+  const milliers=Math.floor(n/1000);n%=1000;
+  if(milliards)parts.push((milliards===1?"un":under1000(milliards))+" milliard"+(milliards>1?"s":""));
+  if(millions)parts.push((millions===1?"un":under1000(millions))+" million"+(millions>1?"s":""));
+  if(milliers)parts.push((milliers===1?"":under1000(milliers)+" ")+"mille");
+  if(n)parts.push(under1000(n));
+  return parts.join(" ");
+}
+function moneyWords(v){
+  const n=num(v);
+  if(!n&&String(v||"").trim()==="")return "";
+  return Math.round(n).toLocaleString("fr-FR")+" € ("+numberToFrench(n)+" euros)";
+}
+function setBailleurTypes(doc,bailleurs){
+  const p=[...doc.getElementsByTagNameNS(W,"p")].find(p=>(p.textContent||"").includes("Personne physique")&&(p.textContent||"").includes("Personne morale"));
+  if(!p)return;
+  const physical=(bailleurs||[]).some(x=>(x.type||"physique")==="physique");
+  const moral=(bailleurs||[]).some(x=>x.type==="morale");
+  let i=0;
+  for(const t of p.getElementsByTagNameNS(W,"t")){
+    if(/[☐☒]/.test(t.textContent||"")){
+      const on=i===0?physical:moral;
+      t.textContent=(t.textContent||"").replace(/[☐☒]/,on?"☒":"☐");
+      if(++i>=2)break;
+    }
+  }
+}
 async function buildLocation(templateBytes,data){const files=await unzip(templateBytes),xf=files.find(f=>f.name==="word/document.xml");if(!xf)throw Error("Modèle Word incomplet");const doc=new DOMParser().parseFromString(td.decode(xf.data),"application/xml");
 const bailNames=data.bailleurs.map(partyName).filter(Boolean).join(" / "),locNames=data.locataires.map(partyName).filter(Boolean).join(" / ");
 setBox(doc,"Zone de texte 219",0,bailNames);setBox(doc,"Zone de texte 218",0,locNames);
-setBox(doc,"Zone de texte 2",0,data.bailleurs.map(bailleurText).join("\n"),true);
+setBox(doc,"Zone de texte 2",0,data.bailleurs.map(bailleurText).join("\n"),true);setBailleurTypes(doc,data.bailleurs);
 if(data.gestion==="hors"){setBox(doc,"Zone de texte 478161165",0,data.bailleurs.map(x=>x.email).filter(Boolean).join(" / "));setBox(doc,"Zone de texte 1135107845",0,data.bailleurs.map(x=>x.tel).filter(Boolean).join(" / "))}
 data.locataires.slice(0,4).forEach((p,i)=>{setTableCell(doc,0,i+1,0,partyName(p));setTableCell(doc,0,i+1,1,[p.naissance,p.lieuNaissance].filter(Boolean).join(" à "));setTableCell(doc,0,i+1,2,p.email);setTableCell(doc,0,i+1,3,p.tel)});
 setBox(doc,"Zone de texte 2",1,data.localisation);setChoice(doc,"Type d’habitat",data.habitat==="individuel"?1:0);setBox(doc,"Zone de texte 126861955",0,data.identifiantFiscal);setChoice(doc,"Régime juridique de l’immeuble",data.regime==="monopropriete"?1:0);
@@ -24,13 +77,20 @@ setBox(doc,"Zone de texte 660593113",0,data.surface);setBox(doc,"Zone de texte 5
 setChoice(doc,"Modalité de répartition du chauffage",data.chauffageMode==="collectif"?1:0);setChoice(doc,"Modalité de répartition de l’eau chaude",data.eauMode==="collectif"?1:0);
 setChoice(doc,"À usage exclusif d’habitation principale",data.destination==="mixte"?1:0);setBox(doc,"Zone de texte 1029441271",0,data.professionMixte);setBox(doc,"Zone de texte 1625481562",0,data.accessoiresPrivatifs);setBox(doc,"Zone de texte 6783576",0,data.partiesCommunes);setBox(doc,"Zone de texte 630456886",0,data.technologies);
 setBox(doc,"Zone de texte 2077289405",0,data.dateEffet);setBox(doc,"Zone de texte 998965608",0,data.duree);setBox(doc,"Zone de texte 760777164",0,data.raisonDureeReduite);
-setBox(doc,"Zone de texte 628403819",0,money(data.loyer));setChoice(doc,"décret fixant annuellement",data.decretRelocation==="oui"?0:1);setChoice(doc,"loyer de référence majoré",data.encadrement==="oui"?0:1);setBox(doc,"Zone de texte 268514384",0,money(data.loyerBase));setBox(doc,"Zone de texte 475039207",0,money(data.complementLoyer));setBox(doc,"Zone de texte 1040080526",0,money(data.dernierLoyer));setBox(doc,"Zone de texte 31722978",0,data.dateVersementDernier);setBox(doc,"Zone de texte 1259670285",0,data.dateDerniereRevision);setBox(doc,"Zone de texte 1359800534",0,data.dateRevision);setBox(doc,"Zone de texte 85742337",0,data.irl);
+setBox(doc,"Zone de texte 628403819",0,moneyWords(data.loyer));setChoice(doc,"décret fixant annuellement",data.decretRelocation==="oui"?0:1);setChoice(doc,"loyer de référence majoré",data.encadrement==="oui"?0:1);setBox(doc,"Zone de texte 268514384",0,money(data.loyerBase));setBox(doc,"Zone de texte 475039207",0,money(data.complementLoyer));setBox(doc,"Zone de texte 1040080526",0,money(data.dernierLoyer));setBox(doc,"Zone de texte 31722978",0,data.dateVersementDernier);setBox(doc,"Zone de texte 1259670285",0,data.dateDerniereRevision);setBox(doc,"Zone de texte 1359800534",0,data.dateRevision);setBox(doc,"Zone de texte 85742337",0,data.irl);
 if(data.chargesMode==="provision"){setCheck(doc,"Provision mensuelle",true,0);setCheck(doc,"Forfait d’un montant",false,0);setCheck(doc,"Remboursement sur justificatif",false,0);setBox(doc,"Zone de texte 2048181660",0,money(data.chargesMontant))}
 if(data.chargesMode==="forfait"){setCheck(doc,"Provision mensuelle",false,0);setCheck(doc,"Forfait d’un montant",true,0);setCheck(doc,"Remboursement sur justificatif",false,0);setBox(doc,"Zone de texte 2048181660",0,"");setBox(doc,"Zone de texte 792361571",0,money(data.chargesMontant))}
 if(data.chargesMode==="justificatif"){setCheck(doc,"Provision mensuelle",false,0);setCheck(doc,"Forfait d’un montant",false,0);setCheck(doc,"Remboursement sur justificatif",true,0)}
 setBox(doc,"Zone de texte 1214938885",0,data.contribution);setBox(doc,"Zone de texte 904827124",0,data.justifContribution);setBox(doc,"Zone de texte 1352093729",0,money(data.assuranceColocAnnuelle));setBox(doc,"Zone de texte 1942955975",0,money(data.assuranceColocMensuelle));
-setTableCell(doc,1,0,1,money(data.loyer));setTableCell(doc,1,1,1,money(data.chargesMontant));let row=2;if(data.type==="nu"){setTableCell(doc,1,row++,1,money(data.contribution));}setTableCell(doc,1,row++,1,money(data.assuranceColocMensuelle));const total=(Number(data.loyer)||0)+(Number(data.chargesMontant)||0)+(Number(data.assuranceColocMensuelle)||0)+(data.type==="nu"?(Number(data.contribution)||0):0);setTableCell(doc,1,row,1,total?String(total):"");
-setBox(doc,"Zone de texte 561389577",0,data.depensesEnergie);setBox(doc,"Zone de texte 374328480",0,data.anneeEnergie);setBox(doc,"Zone de texte 2135196039",0,data.travauxRecents);setBox(doc,"Zone de texte 1974909847",0,data.majorationTravaux);setBox(doc,"Zone de texte 1136262404",0,data.diminutionTravaux);setBox(doc,"Zone de texte 2071132409",0,money(data.depotGarantie));setBox(doc,"Zone de texte 520617941",0,data.congeLocataire);setBox(doc,"Zone de texte 1418093311",0,data.conditionsLocataire);setBox(doc,"Zone de texte 1121375395",0,data.conditionsBailleur);setBox(doc,"Zone de texte 676414816",0,data.caution);
+setTableCell(doc,1,0,1,num(data.loyer)?num(data.loyer).toLocaleString("fr-FR")+" €":"");setTableCell(doc,1,1,1,num(data.chargesMontant)?num(data.chargesMontant).toLocaleString("fr-FR")+" €":"");let row=2;if(data.type==="nu"){setTableCell(doc,1,row++,1,num(data.contribution)?num(data.contribution).toLocaleString("fr-FR")+" €":"");}setTableCell(doc,1,row++,1,num(data.assuranceColocMensuelle)?num(data.assuranceColocMensuelle).toLocaleString("fr-FR")+" €":"");const total=num(data.loyer)+num(data.chargesMontant)+num(data.assuranceColocMensuelle)+(data.type==="nu"?num(data.contribution):0);setTableCell(doc,1,row,1,total?total.toLocaleString("fr-FR")+" €":"");
+setBox(doc,"Zone de texte 561389577",0,data.depensesEnergie);setBox(doc,"Zone de texte 374328480",0,data.anneeEnergie);setBox(doc,"Zone de texte 2135196039",0,data.travauxRecents);setBox(doc,"Zone de texte 1974909847",0,data.majorationTravaux);setBox(doc,"Zone de texte 1136262404",0,data.diminutionTravaux);setBox(doc,"Zone de texte 2071132409",0,moneyWords(data.depotGarantie));setBox(doc,"Zone de texte 520617941",0,data.congeLocataire);setBox(doc,"Zone de texte 1418093311",0,data.conditionsLocataire);setBox(doc,"Zone de texte 1121375395",0,data.conditionsBailleur);setBox(doc,"Zone de texte 676414816",0,data.caution);
+const hvb=num(data.honorairesVisiteBailleur),hvl=num(data.honorairesVisiteLocataire),heb=num(data.honorairesEdlBailleur),hel=num(data.honorairesEdlLocataire);
+setTableCell(doc,2,1,1,hvb?hvb.toLocaleString("fr-FR")+" €":"");setTableCell(doc,2,1,2,hvl?hvl.toLocaleString("fr-FR")+" €":"");
+setTableCell(doc,2,2,1,heb?heb.toLocaleString("fr-FR")+" €":"");setTableCell(doc,2,2,2,hel?hel.toLocaleString("fr-FR")+" €":"");
+const totalHB=hvb+heb,totalHL=hvl+hel;
+setTableCell(doc,2,3,1,totalHB?totalHB.toLocaleString("fr-FR")+" €":"");setTableCell(doc,2,3,2,totalHL?totalHL.toLocaleString("fr-FR")+" €":"");
 setChoice(doc,"a-t-il subi un sinistre",data.sinistre==="oui"?0:1);
 for(const [label,key] of Object.entries(data.annexes||{}))setCheck(doc,label,!!key,0);
+for(const [label,key] of Object.entries(data.avenantCharges||{}))setCheck(doc,label,!!key,0);
+for(const [label,key] of Object.entries(data.avenantInfos||{}))setCheck(doc,label,!!key,0);
 xf.data=te.encode(new XMLSerializer().serializeToString(doc));return new Blob([zip(files)],{type:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"})}
