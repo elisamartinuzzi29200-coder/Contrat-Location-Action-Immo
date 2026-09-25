@@ -152,7 +152,9 @@ $("existingLeaseInput").onchange=async()=>{
   try{
     $("status").textContent="Lecture du bail existant…";
     const bytes=new Uint8Array(await file.arrayBuffer());
-    const imported=await extractExistingLease(bytes);
+    const isPdf=file.type==="application/pdf"||/\.pdf$/i.test(file.name);
+    $("status").textContent=isPdf?"Lecture du PDF existant…":"Lecture du bail Word existant…";
+    const imported=isPdf?await extractExistingLeasePdf(bytes):await extractExistingLease(bytes);
     data=sanitizeImportedData(imported);
     currentId="loc_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
     step=0;viewMode="editor";
@@ -164,7 +166,7 @@ $("existingLeaseInput").onchange=async()=>{
   }catch(e){
     $("status").textContent="";
     $("existingLeaseInput").value="";
-    alert("Impossible de récupérer les informations de ce bail : "+e.message+"\n\nUtilise de préférence un bail Word .docx Action Immobilière.");
+    alert("Impossible de récupérer les informations de ce bail : "+e.message+"\n\nTu peux utiliser un bail Word .docx ou un PDF. Pour un PDF scanné, la lecture peut prendre un peu plus de temps.");
   }
 };
 $("saveBtn").onclick=()=>{if(viewMode==="dashboard")return;saveDossier()};$("dashboardBtn").onclick=()=>{viewMode="dashboard";renderDashboard()};$("newBtn").onclick=newDossier;
