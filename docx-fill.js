@@ -73,84 +73,120 @@ function getBoxText(doc,name,occ=0){
   const b=a.getElementsByTagNameNS(W,"txbxContent")[0];
   return b?(b.textContent||"").replace(/\s+/g," ").trim():"";
 }
+function bodyBlocks(doc){
+  const body=doc.getElementsByTagNameNS(W,"body")[0];
+  return body?[...body.children]:[];
+}
+function blockText(n){return (n?.textContent||"").replace(/\s+/g," ").trim()}
+function between(doc,startNeedle,endNeedle){
+  const xs=bodyBlocks(doc);
+  const s=xs.findIndex(n=>blockText(n).includes(startNeedle));
+  if(s<0)return "";
+  let e=endNeedle?xs.findIndex((n,i)=>i>s&&blockText(n).includes(endNeedle)):-1;
+  if(e<0)e=Math.min(xs.length,s+8);
+  return xs.slice(s+1,e).map(blockText).filter(Boolean).join(" ").replace(/\s+/g," ").trim();
+}
 function readChoice(doc,needle,count=2){
   const p=[...doc.getElementsByTagNameNS(W,"p")].find(p=>(p.textContent||"").includes(needle));
   if(!p)return -1;
   let idx=0;
   for(const t of p.getElementsByTagNameNS(W,"t")){
     const s=t.textContent||"";
-    if(/[☐☒]/.test(s)){
-      if(s.includes("☒"))return idx;
-      idx++;if(idx>=count)break;
-    }
+    if(/[☐☒]/.test(s)){if(s.includes("☒"))return idx;idx++;if(idx>=count)break}
   }
   return -1;
 }
 function readCheck(doc,needle){
   const p=[...doc.getElementsByTagNameNS(W,"p")].find(p=>(p.textContent||"").includes(needle));
-  if(!p)return false;
-  return (p.textContent||"").includes("☒");
-}
-function extractBailleurs(doc){
-  const txt=getBoxText(doc,"Zone de texte 2",0);
-  const names=getBoxText(doc,"Zone de texte 219",0);
-  if(!txt&&!names)return [ {type:"physique",nom:"",prenoms:"",denomination:"",adresse:"",email:"",tel:""} ];
-  const chunks=(txt||names).split(/\n|D’une part,|D'UNE PART/i).map(x=>x.trim()).filter(Boolean);
-  const out=[];
-  for(const raw of chunks){
-    if(/personne morale|SOCI[ÉE]T[ÉE]/i.test(raw)){
-      const dm=raw.match(/(?:SOCI[ÉE]T[ÉE]\s+)?([^,]+).*?(?:si[eè]ge social\s*:\s*|si[eè]ge social\s+)(.+?)(?:\.|$)/i);
-      out.push({type:"morale",nom:"",prenoms:"",denomination:(dm&&dm[1]?dm[1].trim():raw.split(",")[0].trim()),adresse:(dm&&dm[2]?dm[2].trim():""),email:"",tel:""});
-    }else{
-      const m=raw.match(/^([^,]+?)(?:,\s*demeurant\s+(.+?))(?:\.|$)/i);
-      const full=(m&&m[1]?m[1]:(names||raw)).trim(),parts=full.split(/\s+/),nom=parts.shift()||"",prenoms=parts.join(" ");
-      out.push({type:"physique",nom,prenoms,denomination:"",adresse:(m&&m[2]?m[2].trim():""),email:"",tel:""});
-    }
-  }
-  return out.length?out:[{type:"physique",nom:names,prenoms:"",denomination:"",adresse:"",email:"",tel:""}];
+  return !!p&&(p.textContent||"").includes("☒");
 }
 function readTableCell(doc,ti,ri,ci){
   const tbl=doc.getElementsByTagNameNS(W,"tbl")[ti];if(!tbl)return "";
   const rows=[...tbl.children].filter(x=>x.localName==="tr"),r=rows[ri];if(!r)return "";
-  const cells=[...r.children].filter(x=>x.localName==="tc"),c=cells[ci];
-  return c?(c.textContent||"").replace(/\s+/g," ").trim():"";
+  const cells=[...r.children].filter(x=>x.localName==="tc"),cell=cells[ci];
+  return cell?blockText(cell):"";
+}
+function parseBailleurs(doc){
+  const raw=between(doc,"Nom et prénom, ou dénomination du bailleur","Personne physique");
+  const typeIdx=readChoice(doc,"Personne physique",2);
+  const email=between(doc,"Adresse électronique","Téléphone");
+  const tel=between(doc,"Téléphone","Dénommés ci-après");
+  if(!raw)return [{type:typeIdx===1?"morale":"physique",nom:"",prenoms:"",denomination:"",adresse:"",email,tel}];
+  if(typeIdx===1){
+    const parts=raw.split(/[,;]\s*/);
+    return [{type:"morale",nom:"",prenoms:"",denomination:(parts[0]||raw).trim(),adresse:parts.slice(1).join(", ").trim(),email,tel}];
+  }
+  const m=raw.match(/^(.+?)(?:,|\s+-\s+|\s+demeurant\s+)(.+)$/i);
+  const ident=(m?m[1]:raw).trim(),addr=(m?m[2]:"").trim(),parts=ident.split(/\s+/);
+  return [{type:"physique",nom:(parts.shift()||"").trim(),prenoms:parts.join(" "),denomination:"",adresse:addr,email,tel}];
 }
 async function extractExistingLease(bytes){
   const files=await unzip(bytes),xf=files.find(f=>f.name==="word/document.xml");
   if(!xf)throw Error("Ce fichier Word ne ressemble pas à un bail compatible.");
-  const doc=new DOMParser().parseFromString(td.decode(xf.data),"application/xml"),all=(doc.documentElement.textContent||"");
+  const doc=new DOMParser().parseFromString(td.decode(xf.data),"application/xml"),all=(doc.documentElement.textContent||"").replace(/\s+/g," ");
   const type=/LOGEMENT\s+MEUBL[ÉE]/i.test(all)?"meuble":"nu";
   const habitatChoice=readChoice(doc,"Type d’habitat",2),regimeChoice=readChoice(doc,"Régime juridique de l’immeuble",2),periodChoice=readChoice(doc,"Avant 1949",5),destChoice=readChoice(doc,"À usage exclusif d’habitation principale",2),chauffChoice=readChoice(doc,"Modalité de répartition du chauffage",2),eauChoice=readChoice(doc,"Modalité de répartition de l’eau chaude",2);
   const periods=["avant1949","1949-1974","1975-1989","1989-2005","depuis2005"];
+  const paiement=[...doc.getElementsByTagNameNS(W,"p")].find(p=>(p.textContent||"").includes("Lieu de paiement"));
+  const ptxt=paiement?(paiement.textContent||""):"";
+  const gestion=/☒\s*Agence Action Immobili[eè]re/i.test(ptxt)?"gestion":"hors";
   const chargesMode=readCheck(doc,"Provision mensuelle")?"provision":readCheck(doc,"Forfait d’un montant")?"forfait":readCheck(doc,"Remboursement sur justificatif")?"justificatif":"provision";
-  const gestion=/Lieu de paiement[\s\S]{0,120}Agence Action Immobili[eè]re/i.test(all)&&/☒\s*Agence Action Immobili[eè]re/i.test(all)?"gestion":"hors";
   const out={
-    type,gestion,bailleurs:extractBailleurs(doc),locataires:[{nom:"",prenoms:"",naissance:"",lieuNaissance:"",email:"",tel:""}],
-    localisation:getBoxText(doc,"Zone de texte 2",1),habitat:habitatChoice===1?"individuel":"collectif",
-    identifiantFiscal:getBoxText(doc,"Zone de texte 126861955",0),regime:regimeChoice===1?"monopropriete":"copropriete",
-    periode:periodChoice>=0?periods[periodChoice]:"depuis2005",surface:getBoxText(doc,"Zone de texte 660593113",0),
-    pieces:"",caracteristiques:getBoxText(doc,"Zone de texte 507952355",0),autresParties:getBoxText(doc,"Zone de texte 1328110326",0),
-    equipements:getBoxText(doc,"Zone de texte 868199202",0),chauffageMode:chauffChoice===1?"collectif":"individuel",chauffageAutre:getBoxText(doc,"Zone de texte 1728029714",0),
-    eauMode:eauChoice===1?"collectif":"individuel",eauAutre:getBoxText(doc,"Zone de texte 85956290",0),destination:destChoice===1?"mixte":"habitation",
-    professionMixte:getBoxText(doc,"Zone de texte 1029441271",0),accessoiresPrivatifs:getBoxText(doc,"Zone de texte 1625481562",0),partiesCommunes:getBoxText(doc,"Zone de texte 6783576",0),technologies:getBoxText(doc,"Zone de texte 630456886",0),
-    depensesEnergie:getBoxText(doc,"Zone de texte 561389577",0),anneeEnergie:getBoxText(doc,"Zone de texte 374328480",0),
-    dateEffet:"",duree:getBoxText(doc,"Zone de texte 998965608",0),raisonDureeReduite:getBoxText(doc,"Zone de texte 760777164",0),
-    loyer:"",decretRelocation:readChoice(doc,"décret fixant annuellement",2)===0?"oui":"non",encadrement:readChoice(doc,"loyer de référence majoré",2)===0?"oui":"non",
+    type,gestion,bailleurs:parseBailleurs(doc),locataires:[{nom:"",prenoms:"",naissance:"",lieuNaissance:"",email:"",tel:""}],
+    localisation:between(doc,"Localisation du logement","Type d’habitat"),
+    habitat:habitatChoice===1?"individuel":"collectif",
+    identifiantFiscal:between(doc,"Identifiant fiscal du logement","Régime juridique de l’immeuble"),
+    regime:regimeChoice===1?"monopropriete":"copropriete",
+    periode:periodChoice>=0?periods[periodChoice]:"depuis2005",
+    surface:between(doc,"Surface habitable","Caractéristiques du logement").replace(/M²/gi,"").trim(),
+    pieces:"",
+    caracteristiques:between(doc,"Caractéristiques du logement","Autres parties du logement"),
+    autresParties:between(doc,"Autres parties du logement","Eléments d’équipements du logement"),
+    equipements:between(doc,"Eléments d’équipements du logement","Modalité de répartition du chauffage"),
+    chauffageMode:chauffChoice===1?"collectif":"individuel",
+    chauffageAutre:"",
+    eauMode:eauChoice===1?"collectif":"individuel",
+    eauAutre:"",
+    destination:destChoice===1?"mixte":"habitation",
+    professionMixte:destChoice===1?between(doc,"usage mixte d’habitation principale et professionnelle","Le LOCATAIRE s’interdit"):"",
+    accessoiresPrivatifs:between(doc,"Désignation des locaux et équipements accessoires","Enumération des locaux"),
+    partiesCommunes:between(doc,"Enumération des locaux, parties, équipements","Equipement d’accès aux technologies"),
+    technologies:between(doc,"Equipement d’accès aux technologies","DATE DE PRISE D’EFFET"),
+    depensesEnergie:between(doc,"Montant ou fourchette inscrit","Estimation réalisée à partir"),
+    anneeEnergie:between(doc,"Estimation réalisée à partir des prix énergétiques","DATE DE PRISE D’EFFET"),
+    dateEffet:"",
+    duree:between(doc,"B. Durée du contrat","C. Le cas échéant"),
+    raisonDureeReduite:between(doc,"Événement et raisons justifiant la durée réduite","CONDITIONS FINANCIÈRES"),
+    loyer:"",
+    decretRelocation:readChoice(doc,"décret fixant annuellement",2)===0?"oui":"non",
+    encadrement:readChoice(doc,"loyer de référence majoré",2)===0?"oui":"non",
     loyerReference:"",loyerReferenceMajore:"",loyerBase:"",complementLoyer:"",dernierLoyer:"",dateVersementDernier:"",dateDerniereRevision:"",
-    dateRevision:"",irl:"",chargesMode,chargesMontant:getBoxText(doc,"Zone de texte 2048181660",0)||getBoxText(doc,"Zone de texte 792361571",0),
-    contribution:getBoxText(doc,"Zone de texte 1214938885",0),justifContribution:getBoxText(doc,"Zone de texte 904827124",0),
-    assuranceColocAnnuelle:getBoxText(doc,"Zone de texte 1352093729",0),assuranceColocMensuelle:getBoxText(doc,"Zone de texte 1942955975",0),
-    depotGarantie:"",honorairesVisiteBailleur:readTableCell(doc,2,1,1),honorairesVisiteLocataire:readTableCell(doc,2,1,2),honorairesEdlBailleur:readTableCell(doc,2,2,1),honorairesEdlLocataire:readTableCell(doc,2,2,2),
-    travauxRecents:getBoxText(doc,"Zone de texte 2135196039",0),majorationTravaux:getBoxText(doc,"Zone de texte 1974909847",0),diminutionTravaux:getBoxText(doc,"Zone de texte 1136262404",0),
-    sinistre:readChoice(doc,"a-t-il subi un sinistre",2)===0?"oui":"non",congeLocataire:getBoxText(doc,"Zone de texte 520617941",0),
-    conditionsLocataire:getBoxText(doc,"Zone de texte 1418093311",0),conditionsBailleur:getBoxText(doc,"Zone de texte 1121375395",0),caution:getBoxText(doc,"Zone de texte 676414816",0),
+    dateRevision:"",irl:"",
+    chargesMode,
+    chargesMontant:between(doc,"Provision mensuelle d’un montant","Forfait d’un montant")||between(doc,"Forfait d’un montant","Remboursement sur justificatif"),
+    contribution:type==="nu"?between(doc,"Montant et durée de la participation","Eléments propres à justifier"):"",
+    justifContribution:type==="nu"?between(doc,"Eléments propres à justifier les travaux","En cas de colocation"):"",
+    assuranceColocAnnuelle:between(doc,"Montant total annuel récupérable","Montant récupérable par douzième"),
+    assuranceColocMensuelle:between(doc,"Montant récupérable par douzième","Modalités de paiement"),
+    depotGarantie:"",
+    honorairesVisiteBailleur:readTableCell(doc,2,1,1),
+    honorairesVisiteLocataire:readTableCell(doc,2,1,2),
+    honorairesEdlBailleur:readTableCell(doc,2,2,1),
+    honorairesEdlLocataire:readTableCell(doc,2,2,2),
+    travauxRecents:between(doc,"Montant et nature des travaux d’amélioration","Majoration du loyer"),
+    majorationTravaux:between(doc,"Majoration du loyer","Diminution de loyer"),
+    diminutionTravaux:between(doc,"Diminution de loyer","GARANTIES"),
+    sinistre:readChoice(doc,"a-t-il subi un sinistre",2)===0?"oui":"non",
+    congeLocataire:between(doc,"locataire en place a donné congé","Le bailleur s’engage"),
+    conditionsLocataire:"",
+    conditionsBailleur:"",
+    caution:"",
     annexes:{},avenantCharges:{},avenantInfos:{}
   };
   const annexLabels=["Un extrait du règlement concernant la destination de l’immeuble","Le règlement intérieur de l’immeuble","Un document informatif sur les risques de nuisances sonores aériennes","Un diagnostic de performance énergétique","Un constat de risque d‘exposition au plomb","Une copie d’un état mentionnant l’absence ou la présence de matériaux","Un état de l’installation intérieure d’électricité et de gaz","Un état des risques naturels et technologiques","Une notice d’information relative aux droits et obligations","Un état des lieux","Une autorisation préalable de mise en location","Les références aux loyers habituellement constatés","Une grille de vétusté"];
   for(const x of annexLabels)out.annexes[x]=readCheck(doc,x);
   return out;
 }
-
 async function buildLocation(templateBytes,data){const files=await unzip(templateBytes),xf=files.find(f=>f.name==="word/document.xml");if(!xf)throw Error("Modèle Word incomplet");const doc=new DOMParser().parseFromString(td.decode(xf.data),"application/xml");
 const bailNames=data.bailleurs.map(partyName).filter(Boolean).join(" / "),locNames=data.locataires.map(partyName).filter(Boolean).join(" / ");
 setBox(doc,"Zone de texte 219",0,bailNames);setBox(doc,"Zone de texte 218",0,locNames);
