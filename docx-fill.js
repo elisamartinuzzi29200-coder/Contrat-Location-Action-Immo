@@ -659,9 +659,9 @@ async function buildCaution(templateBytes,data){
   setBox(doc,"Zone de texte 2",6,s.profession);
   setBox(doc,"Zone de texte 2",7,s.employeur);
   setBox(doc,"Zone de texte 2",8,s.contratType==="determinee"?cautionDateFr(s.contratFin):"");
-  setBox(doc,"Zone de texte 2",9,cautionMoneyNumber(s.remuneration));
-  setBox(doc,"Zone de texte 2",10,cautionMoneyNumber(s.autresRevenus));
-  setBox(doc,"Zone de texte 2",11,totalRevenus?cautionMoneyNumber(totalRevenus):"");
+  setBox(doc,"Zone de texte 2",9,s.remuneration?cautionMoneyNumber(s.remuneration)+" €":"");
+  setBox(doc,"Zone de texte 2",10,s.autresRevenus?cautionMoneyNumber(s.autresRevenus)+" €":"");
+  setBox(doc,"Zone de texte 2",11,totalRevenus?cautionMoneyNumber(totalRevenus)+" €":"");
 
   const family=["Célibataire","Marié(e)","Pacsé(e)","Divorcé(e)","Veuf(ve)"];
   setChoice(doc,"Célibataire",Math.max(0,family.indexOf(s.situation)),5);
@@ -705,7 +705,7 @@ async function buildCaution(templateBytes,data){
   setBox(doc,"Zone de texte 2",36,s.dureeMax);
 
   const monthlyTotal=num(data.loyer)+num(data.chargesMontant),months=data.type==="meuble"?12:36,maxAmount=monthlyTotal*months,maxN=cautionMoneyNumber(maxAmount);
-  const maxText=maxAmount?[cautionMoneyLetters(maxAmount),maxN?maxN+" €":""].filter(Boolean).join(" — "):"";
+  const maxText=maxAmount?(maxN+" € ("+cautionMoneyLetters(maxAmount)+")"):"";
   setBox(doc,"Zone de texte 2",40,maxText);
   setBox(doc,"Zone de texte 2",41,data.type==="meuble"?"1":"3");
 
