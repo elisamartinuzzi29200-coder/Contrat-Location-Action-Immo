@@ -9,19 +9,48 @@ function setBox(doc,name,occ,value,prepend=false){const d=[...doc.getElementsByT
 function setChoice(doc,needle,selected,count=2){const ps=[...doc.getElementsByTagNameNS(W,"p")].filter(p=>(p.textContent||"").includes(needle));const p=ps[0];if(!p)return;let idx=0;for(const t of p.getElementsByTagNameNS(W,"t")){if(/[☐☒]/.test(t.textContent||"")){t.textContent=(t.textContent||"").replace(/[☐☒]/,idx===selected?"☒":"☐");idx++;if(idx>=count)break}}}
 function setCheck(doc,needle,on,which=0){const ps=[...doc.getElementsByTagNameNS(W,"p")].filter(p=>(p.textContent||"").includes(needle));const p=ps[0];if(!p)return;let idx=0;for(const t of p.getElementsByTagNameNS(W,"t")){if(/[☐☒]/.test(t.textContent||"")){if(idx===which){t.textContent=(t.textContent||"").replace(/[☐☒]/,on?"☒":"☐");return}idx++}}}
 
+function findParagraphCI(doc,needle){
+  const n=String(needle||"").toLowerCase();
+  return [...doc.getElementsByTagNameNS(W,"p")].find(p=>String(p.textContent||"").toLowerCase().includes(n));
+}
+function setCheckByLabel(doc,paragraphNeedle,labelNeedle,on){
+  const p=findParagraphCI(doc,paragraphNeedle)||findParagraphCI(doc,labelNeedle);if(!p)return false;
+  const ts=[...p.getElementsByTagNameNS(W,"t")],label=String(labelNeedle||"").toLowerCase();
+  let li=ts.findIndex(t=>String(t.textContent||"").toLowerCase().includes(label));if(li<0)return false;
+  for(let i=li;i>=0;i--){
+    if(/[☐☒]/.test(ts[i].textContent||"")){ts[i].textContent=(ts[i].textContent||"").replace(/[☐☒]/,on?"☒":"☐");return true}
+  }
+  for(let i=li+1;i<ts.length;i++){
+    if(/[☐☒]/.test(ts[i].textContent||"")){ts[i].textContent=(ts[i].textContent||"").replace(/[☐☒]/,on?"☒":"☐");return true}
+  }
+  return false;
+}
 function setCheckAndNumber(doc,needle,on,numberValue){
-  const ps=[...doc.getElementsByTagNameNS(W,"p")].filter(p=>(p.textContent||"").includes(needle));
-  const p=ps[0];if(!p)return;
+  const p=findParagraphCI(doc,needle);if(!p)return false;
+  const ts=[...p.getElementsByTagNameNS(W,"t")],label=String(needle||"").toLowerCase();
+  let li=ts.findIndex(t=>String(t.textContent||"").toLowerCase().includes(label));
+  if(li<0)return false;
   let changed=false;
-  for(const t of p.getElementsByTagNameNS(W,"t")){
-    if(/[☐☒]/.test(t.textContent||"")&&!changed){t.textContent=(t.textContent||"").replace(/[☐☒]/,on?"☒":"☐");changed=true}
+  for(let i=li;i>=0;i--){
+    if(/[☐☒]/.test(ts[i].textContent||"")){ts[i].textContent=(ts[i].textContent||"").replace(/[☐☒]/,on?"☒":"☐");changed=true;break}
+  }
+  if(!changed)for(let i=li+1;i<ts.length;i++){
+    if(/[☐☒]/.test(ts[i].textContent||"")){ts[i].textContent=(ts[i].textContent||"").replace(/[☐☒]/,on?"☒":"☐");changed=true;break}
   }
   if(on&&String(numberValue||"").trim()){
     const suffix=" n° "+String(numberValue).trim();
-    if(!(p.textContent||"").includes(suffix)){
-      const r=doc.createElementNS(W,"w:r"),t=doc.createElementNS(W,"w:t");t.textContent=suffix;r.appendChild(t);p.appendChild(r);
+    if(!String(p.textContent||"").includes(suffix)){
+      ts[li].textContent=(ts[li].textContent||"")+suffix;
     }
   }
+  return changed;
+}
+function appendToParagraphIfMissing(doc,needle,value){
+  if(!value||String(doc.documentElement.textContent||"").includes(value))return;
+  const p=findParagraphCI(doc,needle);if(!p)return;
+  const r=doc.createElementNS(W,"w:r"),t=doc.createElementNS(W,"w:t");
+  t.setAttributeNS("http://www.w3.org/XML/1998/namespace","xml:space","preserve");
+  t.textContent=" "+value;r.appendChild(t);p.appendChild(r);
 }
 
 function setTableCell(doc,ti,ri,ci,value){const tbl=doc.getElementsByTagNameNS(W,"tbl")[ti];if(!tbl)return;const rows=[...tbl.children].filter(x=>x.localName==="tr"),r=rows[ri];if(!r)return;const cells=[...r.children].filter(x=>x.localName==="tc"),c=cells[ci];if(!c)return;let p=c.getElementsByTagNameNS(W,"p")[0]||doc.createElementNS(W,"w:p");if(!p.parentNode)c.appendChild(p);[...p.childNodes].forEach(x=>{if(x.localName!=="pPr")p.removeChild(x)});const rr=doc.createElementNS(W,"w:r"),tt=doc.createElementNS(W,"w:t");tt.textContent=value||"";rr.appendChild(tt);p.appendChild(rr)}
@@ -413,15 +442,15 @@ setBox(doc,"Zone de texte 2",1,data.localisation);setChoice(doc,"Type d’habita
 const periods=["avant1949","1949-1974","1975-1989","1989-2005","depuis2005"];setChoice(doc,"Avant 1949",Math.max(0,periods.indexOf(data.periode)),5);
 setBox(doc,"Zone de texte 660593113",0,data.surface);setBox(doc,"Zone de texte 507952355",0,data.caracteristiques);setBox(doc,"Zone de texte 1328110326",0,data.autresPartiesAutre||data.autresParties);setBox(doc,"Zone de texte 868199202",0,data.equipementsAutre||data.equipements);setBox(doc,"Zone de texte 1728029714",0,data.chauffageEnergie==="gaz"?"Gaz":"Électrique");
 const otherLabels={"Grenier":"grenier","Comble aménagé":"comble aménagé","Comble non aménagé":"comble non aménagé","Terrasse":"terrasse","Balcon":"balcon","Loggia":"loggia","Jardin":"jardin"};
-for(const [label,needle] of Object.entries(otherLabels))setCheck(doc,needle,!!(data.autresPartiesChoix||{})[label],0);
+for(const [label,needle] of Object.entries(otherLabels))setCheckByLabel(doc,"Autres parties du logement",needle,!!(data.autresPartiesChoix||{})[label]);
 const eqLabels={"Cuisine équipée":"Cuisine équipée","Salle de bain":"Salle de bain","Salle de douche":"Salle de douche","WC séparé":"WC séparé"};
-for(const [label,needle] of Object.entries(eqLabels))setCheck(doc,needle,!!(data.equipementsChoix||{})[label],0);setBox(doc,"Zone de texte 85956290",0,data.eauAutre);
-setChoice(doc,"Modalité de répartition du chauffage",data.chauffageMode==="collectif"?1:0);setCheck(doc,"Gaz",data.chauffageEnergie==="gaz",0);setCheck(doc,"Électrique",data.chauffageEnergie!=="gaz",0);setChoice(doc,"Modalité de répartition de l’eau chaude",data.eauMode==="collectif"?1:0);
+for(const [label,needle] of Object.entries(eqLabels))setCheckByLabel(doc,"Eléments d’équipements du logement",needle,!!(data.equipementsChoix||{})[label]);setBox(doc,"Zone de texte 85956290",0,data.eauEnergie==="gaz"?"Gaz":"Électrique");
+setChoice(doc,"Modalité de répartition du chauffage",data.chauffageMode==="collectif"?1:0);setCheckByLabel(doc,"Modalité de répartition du chauffage","Gaz",data.chauffageEnergie==="gaz");setCheckByLabel(doc,"Modalité de répartition du chauffage","Électrique",data.chauffageEnergie!=="gaz");setChoice(doc,"Modalité de répartition de l’eau chaude",data.eauMode==="collectif"?1:0);setCheckByLabel(doc,"Modalité de répartition de l’eau chaude","Gaz",data.eauEnergie==="gaz");setCheckByLabel(doc,"Modalité de répartition de l’eau chaude","Électrique",data.eauEnergie!=="gaz");
 setChoice(doc,"À usage exclusif d’habitation principale",data.destination==="mixte"?1:0);setBox(doc,"Zone de texte 1029441271",0,data.professionMixte);setBox(doc,"Zone de texte 1625481562",0,data.accessoiresPrivatifsAutre||data.accessoiresPrivatifs);setBox(doc,"Zone de texte 6783576",0,data.partiesCommunesAutre||data.partiesCommunes);
 for(const label of ["Cave","Parking","Garage"])setCheckAndNumber(doc,label,!!(data.accessoiresPrivatifsChoix||{})[label],(data.accessoiresPrivatifsNumeros||{})[label]);
 for(const label of ["Garage à vélo","Ascenseur","Espaces verts","Aires et équipements de jeux","Laverie","Local poubelle","Gardiennage"])setCheckAndNumber(doc,label,!!(data.partiesCommunesChoix||{})[label],(data.partiesCommunesNumeros||{})[label]);setBox(doc,"Zone de texte 630456886",0,data.technologies);
 setBox(doc,"Zone de texte 2077289405",0,data.dateEffet);setBox(doc,"Zone de texte 998965608",0,data.duree);setBox(doc,"Zone de texte 760777164",0,data.raisonDureeReduite);
-setBox(doc,"Zone de texte 628403819",0,moneyWords(data.loyer));setChoice(doc,"décret fixant annuellement",data.decretRelocation==="oui"?0:1);setChoice(doc,"loyer de référence majoré",data.encadrement==="oui"?0:1);setBox(doc,"Zone de texte 268514384",0,money(data.loyerBase));setBox(doc,"Zone de texte 475039207",0,money(data.complementLoyer));setBox(doc,"Zone de texte 1040080526",0,money(data.dernierLoyer));setBox(doc,"Zone de texte 31722978",0,data.dateVersementDernier);setBox(doc,"Zone de texte 1259670285",0,data.dateDerniereRevision);setBox(doc,"Zone de texte 1359800534",0,data.dateRevision);const q=Number(data.irlTrimestre)||0,qLabel=q?(q===1?"1er trimestre":q+"ème trimestre"):"";const irlText=qLabel&&data.irlAnnee&&data.irlValeur?qLabel+" "+data.irlAnnee+" d'une valeur de "+data.irlValeur:(data.irl||"");setBox(doc,"Zone de texte 85742337",0,irlText);
+setBox(doc,"Zone de texte 628403819",0,moneyWords(data.loyer));setChoice(doc,"décret fixant annuellement",data.decretRelocation==="oui"?0:1);setChoice(doc,"loyer de référence majoré",data.encadrement==="oui"?0:1);setBox(doc,"Zone de texte 268514384",0,money(data.loyerBase));setBox(doc,"Zone de texte 475039207",0,money(data.complementLoyer));setBox(doc,"Zone de texte 1040080526",0,money(data.dernierLoyer));setBox(doc,"Zone de texte 31722978",0,data.dateVersementDernier);setBox(doc,"Zone de texte 1259670285",0,data.dateDerniereRevision);setBox(doc,"Zone de texte 1359800534",0,data.dateRevision);const q=Number(data.irlTrimestre)||0,qLabel=q?(q===1?"1er trimestre":q+"ème trimestre"):"";const irlText=qLabel&&data.irlAnnee?(qLabel+" "+data.irlAnnee+(data.irlValeur?" d'une valeur de "+data.irlValeur:"")):(data.irl||"");setBox(doc,"Zone de texte 85742337",0,irlText);appendToParagraphIfMissing(doc,"Indice de Référence des Loyers",irlText);
 if(data.chargesMode==="provision"){setCheck(doc,"Provision mensuelle",true,0);setCheck(doc,"Forfait d’un montant",false,0);setCheck(doc,"Remboursement sur justificatif",false,0);setBox(doc,"Zone de texte 2048181660",0,money(data.chargesMontant))}
 if(data.chargesMode==="forfait"){setCheck(doc,"Provision mensuelle",false,0);setCheck(doc,"Forfait d’un montant",true,0);setCheck(doc,"Remboursement sur justificatif",false,0);setBox(doc,"Zone de texte 2048181660",0,"");setBox(doc,"Zone de texte 792361571",0,money(data.chargesMontant))}
 if(data.chargesMode==="justificatif"){setCheck(doc,"Provision mensuelle",false,0);setCheck(doc,"Forfait d’un montant",false,0);setCheck(doc,"Remboursement sur justificatif",true,0)}
