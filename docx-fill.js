@@ -13,6 +13,22 @@ function findParagraphCI(doc,needle){
   const n=String(needle||"").toLowerCase();
   return [...doc.getElementsByTagNameNS(W,"p")].find(p=>String(p.textContent||"").toLowerCase().includes(n));
 }
+function setCheckboxBeforeBox(doc,boxTitle,on){
+  const controls=[...doc.getElementsByTagNameNS(W,"sdt")];
+  const box=controls.find(s=>[...s.getElementsByTagNameNS(W,"alias")].some(a=>a.getAttributeNS(W,"val")===boxTitle||a.getAttribute("w:val")===boxTitle));
+  if(!box)return false;
+  const p=box.closest?box.closest("w\\:p"):null;
+  const para=p||(()=>{let n=box.parentNode;while(n&&n.localName!=="p")n=n.parentNode;return n})();
+  if(!para)return false;
+  const ts=[...para.getElementsByTagNameNS(W,"t")];
+  const boxTexts=[...box.getElementsByTagNameNS(W,"t")];
+  const firstBoxText=boxTexts[0];
+  const idx=firstBoxText?ts.indexOf(firstBoxText):ts.length;
+  for(let i=idx-1;i>=0;i--){
+    if(/[☐☒]/.test(ts[i].textContent||"")){ts[i].textContent=(ts[i].textContent||"").replace(/[☐☒]/,on?"☒":"☐");return true}
+  }
+  return false;
+}
 function setCheckByLabel(doc,paragraphNeedle,labelNeedle,on){
   const p=findParagraphCI(doc,paragraphNeedle)||findParagraphCI(doc,labelNeedle);if(!p)return false;
   const ts=[...p.getElementsByTagNameNS(W,"t")],label=String(labelNeedle||"").toLowerCase();
@@ -445,7 +461,7 @@ const otherLabels={"Grenier":"grenier","Comble aménagé":"comble aménagé","Co
 for(const [label,needle] of Object.entries(otherLabels))setCheckByLabel(doc,"Autres parties du logement",needle,!!(data.autresPartiesChoix||{})[label]);
 const eqLabels={"Cuisine équipée":"Cuisine équipée","Salle de bain":"Salle de bain","Salle de douche":"Salle de douche","WC séparé":"WC séparé"};
 for(const [label,needle] of Object.entries(eqLabels))setCheckByLabel(doc,"Eléments d’équipements du logement",needle,!!(data.equipementsChoix||{})[label]);setBox(doc,"Zone de texte 85956290",0,"");
-setChoice(doc,"Modalité de répartition du chauffage",data.chauffageMode==="collectif"?1:0);setCheckByLabel(doc,"Modalité de répartition du chauffage","Gaz",data.chauffageEnergie==="gaz");setCheckByLabel(doc,"Modalité de répartition du chauffage","Électrique",data.chauffageEnergie==="electricite");setCheckByLabel(doc,"Modalité de répartition du chauffage","Autre",data.chauffageEnergie==="autre");setBox(doc,"Zone de texte 1728029714",0,data.chauffageEnergie==="autre"?(data.chauffageAutre||""):"");setChoice(doc,"Modalité de répartition de l’eau chaude",data.eauMode==="collectif"?1:0);setCheckByLabel(doc,"Modalité de répartition de l’eau chaude","Gaz",data.eauEnergie==="gaz");setCheckByLabel(doc,"Modalité de répartition de l’eau chaude","Électrique",data.eauEnergie==="electricite");setCheckByLabel(doc,"Modalité de répartition de l’eau chaude","Autre",data.eauEnergie==="autre");setBox(doc,"Zone de texte 85956290",0,data.eauEnergie==="autre"?(data.eauAutre||""):"");
+setChoice(doc,"Modalité de répartition du chauffage",data.chauffageMode==="collectif"?1:0);setCheckByLabel(doc,"Modalité de répartition du chauffage","Gaz",data.chauffageEnergie==="gaz");setCheckByLabel(doc,"Modalité de répartition du chauffage","Électrique",data.chauffageEnergie==="electricite");setCheckByLabel(doc,"Modalité de répartition du chauffage","Autre",data.chauffageEnergie==="autre");setCheckboxBeforeBox(doc,"Zone de texte 1728029714",data.chauffageEnergie==="autre");setBox(doc,"Zone de texte 1728029714",0,data.chauffageEnergie==="autre"?(data.chauffageAutre||""):"");setChoice(doc,"Modalité de répartition de l’eau chaude",data.eauMode==="collectif"?1:0);setCheckByLabel(doc,"Modalité de répartition de l’eau chaude","Gaz",data.eauEnergie==="gaz");setCheckByLabel(doc,"Modalité de répartition de l’eau chaude","Électrique",data.eauEnergie==="electricite");setCheckByLabel(doc,"Modalité de répartition de l’eau chaude","Autre",data.eauEnergie==="autre");setCheckboxBeforeBox(doc,"Zone de texte 85956290",data.eauEnergie==="autre");setBox(doc,"Zone de texte 85956290",0,data.eauEnergie==="autre"?(data.eauAutre||""):"");
 setChoice(doc,"À usage exclusif d’habitation principale",data.destination==="mixte"?1:0);setBox(doc,"Zone de texte 1029441271",0,data.professionMixte);setBox(doc,"Zone de texte 1625481562",0,data.accessoiresPrivatifsAutre||data.accessoiresPrivatifs);setBox(doc,"Zone de texte 6783576",0,data.partiesCommunesAutre||data.partiesCommunes);
 for(const label of ["Cave","Parking","Garage"])setCheckAndNumber(doc,label,!!(data.accessoiresPrivatifsChoix||{})[label],(data.accessoiresPrivatifsNumeros||{})[label]);
 for(const label of ["Garage à vélo","Ascenseur","Espaces verts","Aires et équipements de jeux","Laverie","Local poubelle","Gardiennage"])setCheckAndNumber(doc,label,!!(data.partiesCommunesChoix||{})[label],(data.partiesCommunesNumeros||{})[label]);setBox(doc,"Zone de texte 630456886",0,data.technologies);
