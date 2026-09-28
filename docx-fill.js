@@ -6,6 +6,21 @@ async function unzip(b){let e=-1;for(let i=b.length-22;i>=Math.max(0,b.length-65
 function zip(files){let locals=[],centrals=[],off=0;for(const f of files){const n=te.encode(f.name),crc=crc32(f.data),lh=new Uint8Array([...p32(0x04034b50),...p16(20),...p16(0),...p16(0),...p16(0),...p16(0),...p32(crc),...p32(f.data.length),...p32(f.data.length),...p16(n.length),...p16(0)]),l=new Uint8Array(lh.length+n.length+f.data.length);l.set(lh);l.set(n,lh.length);l.set(f.data,lh.length+n.length);locals.push(l);const ch=new Uint8Array([...p32(0x02014b50),...p16(20),...p16(20),...p16(0),...p16(0),...p16(0),...p16(0),...p32(crc),...p32(f.data.length),...p32(f.data.length),...p16(n.length),...p16(0),...p16(0),...p16(0),...p16(0),...p32(0),...p32(off)]),c=new Uint8Array(ch.length+n.length);c.set(ch);c.set(n,ch.length);centrals.push(c);off+=l.length}const cs=centrals.reduce((s,x)=>s+x.length,0),end=new Uint8Array([...p32(0x06054b50),...p16(0),...p16(0),...p16(files.length),...p16(files.length),...p32(cs),...p32(off),...p16(0)]),out=new Uint8Array(off+cs+end.length);let q=0;for(const x of locals){out.set(x,q);q+=x.length}for(const x of centrals){out.set(x,q);q+=x.length}out.set(end,q);return out}
 const W="http://schemas.openxmlformats.org/wordprocessingml/2006/main",WP="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
 function setBox(doc,name,occ,value,prepend=false){const d=[...doc.getElementsByTagNameNS(WP,"docPr")].filter(x=>x.getAttribute("name")===name)[occ];if(!d)return;let a=d.parentElement;while(a&&a.localName!=="anchor")a=a.parentElement;if(!a)return;const b=a.getElementsByTagNameNS(W,"txbxContent")[0];if(!b)return;let p;if(prepend){p=doc.createElementNS(W,"w:p");b.insertBefore(p,b.firstChild)}else{p=b.getElementsByTagNameNS(W,"p")[0]||doc.createElementNS(W,"w:p");if(!p.parentNode)b.appendChild(p);[...p.childNodes].forEach(x=>{if(x.localName!=="pPr")p.removeChild(x)})}const r=doc.createElementNS(W,"w:r");String(value||"").split("\n").forEach((s,i)=>{if(i)r.appendChild(doc.createElementNS(W,"w:br"));const t=doc.createElementNS(W,"w:t");t.setAttributeNS("http://www.w3.org/XML/1998/namespace","xml:space","preserve");t.textContent=s;r.appendChild(t)});p.appendChild(r)}
+
+function setBoxNearLabel(doc,label,value,after=true){
+  const ps=[...doc.getElementsByTagNameNS(W,"p")];
+  const p=ps.find(x=>String(x.textContent||"").toLowerCase().includes(String(label).toLowerCase()));
+  if(!p)return false;
+  const boxes=[...p.getElementsByTagNameNS(WP,"docPr")];
+  if(!boxes.length)return false;
+  const d=after?boxes[boxes.length-1]:boxes[0];
+  const name=d.getAttribute("name");
+  const all=[...doc.getElementsByTagNameNS(WP,"docPr")].filter(x=>x.getAttribute("name")===name);
+  const occ=all.indexOf(d);
+  if(occ<0)return false;
+  setBox(doc,name,occ,value);return true;
+}
+
 function setChoice(doc,needle,selected,count=2){const ps=[...doc.getElementsByTagNameNS(W,"p")].filter(p=>(p.textContent||"").includes(needle));const p=ps[0];if(!p)return;let idx=0;for(const t of p.getElementsByTagNameNS(W,"t")){if(/[☐☒]/.test(t.textContent||"")){t.textContent=(t.textContent||"").replace(/[☐☒]/,idx===selected?"☒":"☐");idx++;if(idx>=count)break}}}
 function setCheck(doc,needle,on,which=0){const ps=[...doc.getElementsByTagNameNS(W,"p")].filter(p=>(p.textContent||"").includes(needle));const p=ps[0];if(!p)return;let idx=0;for(const t of p.getElementsByTagNameNS(W,"t")){if(/[☐☒]/.test(t.textContent||"")){if(idx===which){t.textContent=(t.textContent||"").replace(/[☐☒]/,on?"☒":"☐");return}idx++}}}
 
@@ -506,7 +521,7 @@ if(data.gestion==="hors"){setBox(doc,"Zone de texte 478161165",0,data.bailleurs.
 data.locataires.slice(0,4).forEach((p,i)=>{setTableCell(doc,0,i+1,0,partyName(p));setTableCell(doc,0,i+1,1,[p.naissance,p.lieuNaissance].filter(Boolean).join(" à "));setTableCell(doc,0,i+1,2,p.email);setTableCell(doc,0,i+1,3,p.tel)});
 setBox(doc,"Zone de texte 2",1,data.localisation);setChoice(doc,"Type d’habitat",data.habitat==="individuel"?1:0);setBox(doc,"Zone de texte 126861955",0,data.identifiantFiscal);setChoice(doc,"Régime juridique de l’immeuble",data.regime==="monopropriete"?1:0);
 const periods=["avant1949","1949-1974","1975-1989","1989-2005","depuis2005"];setChoice(doc,"Avant 1949",Math.max(0,periods.indexOf(data.periode)),5);
-setBox(doc,"Zone de texte 660593113",0,data.surface);setBox(doc,"Zone de texte 507952355",0,data.caracteristiques);setBox(doc,"Zone de texte 1328110326",0,data.autresPartiesAutre||data.autresParties);setBox(doc,"Zone de texte 868199202",0,data.equipementsAutre||data.equipements);setBox(doc,"Zone de texte 1728029714",0,"");
+setBox(doc,"Zone de texte 660593113",0,data.surface);setBoxNearLabel(doc,"Surface habitable",data.surface,false);setBoxNearLabel(doc,"Nombre de pièces principales",data.pieces,true);setBox(doc,"Zone de texte 507952355",0,data.caracteristiques);setBox(doc,"Zone de texte 1328110326",0,data.autresPartiesAutre||data.autresParties);setBox(doc,"Zone de texte 868199202",0,data.equipementsAutre||data.equipements);setBox(doc,"Zone de texte 1728029714",0,"");
 const otherLabels={"Grenier":"grenier","Comble aménagé":"comble aménagé","Comble non aménagé":"comble non aménagé","Terrasse":"terrasse","Balcon":"balcon","Loggia":"loggia","Jardin":"jardin"};
 for(const [label,needle] of Object.entries(otherLabels))setCheckByLabel(doc,"Autres parties du logement",needle,!!(data.autresPartiesChoix||{})[label]);
 const eqLabels={"Cuisine équipée":"Cuisine équipée","Salle de bain":"Salle de bain","Salle de douche":"Salle de douche","WC séparé":"WC séparé"};
