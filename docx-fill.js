@@ -591,7 +591,7 @@ setBox(doc,"Zone de texte 2077289405",0,data.dateEffet);setBox(doc,"Zone de text
 setBox(doc,"Zone de texte 628403819",0,moneyWords(data.loyer));setChoice(doc,"décret fixant annuellement",data.decretRelocation==="oui"?0:1);setChoice(doc,"loyer de référence majoré",data.encadrement==="oui"?0:1);setBox(doc,"Zone de texte 268514384",0,money(data.loyerBase));setBox(doc,"Zone de texte 475039207",0,money(data.complementLoyer));
 
 // Correspondance exacte du modèle "CONTRAT DE LOCATION NU GESTION".
-setBox(doc,"Zone de texte 31722978",0,money(data.dernierLoyer));
+setBox(doc,"Zone de texte 31722978",0,moneyWords(data.dernierLoyer));
 setBox(doc,"Zone de texte 1040080526",0,dateFr(data.dateVersementDernier));
 setBox(doc,"Zone de texte 1259670285",0,dateFr(data.dateDerniereRevision));
 setBox(doc,"Zone de texte 1542835909",0,dateFr(data.dateRevision));
@@ -603,9 +603,9 @@ setBox(doc,"Zone de texte 1359800534",0,irlText);
 setLabeledCheckboxExact(doc,"Provision mensuelle",data.chargesMode==="provision");
 setLabeledCheckboxExact(doc,"Forfait d’un montant",data.chargesMode==="forfait");
 setLabeledCheckboxExact(doc,"Remboursement sur justificatif",data.chargesMode==="justificatif");
-setBox(doc,"Zone de texte 85742337",0,data.chargesMode==="provision"?money(data.chargesMontant):"");
-setBox(doc,"Zone de texte 2048181660",0,data.chargesMode==="forfait"?money(data.chargesMontant):"");
-setBox(doc,"Zone de texte 792361571",0,data.chargesMode==="justificatif"?money(data.chargesMontant):"");
+setBox(doc,"Zone de texte 85742337",0,data.chargesMode==="provision"?moneyWords(data.chargesMontant):"");
+setBox(doc,"Zone de texte 2048181660",0,data.chargesMode==="forfait"?moneyWords(data.chargesMontant):"");
+setBox(doc,"Zone de texte 792361571",0,data.chargesMode==="justificatif"?moneyWords(data.chargesMontant):"");
 setBox(doc,"Zone de texte 1214938885",0,data.contribution);setBox(doc,"Zone de texte 904827124",0,data.justifContribution);setBox(doc,"Zone de texte 1352093729",0,money(data.assuranceColocAnnuelle));setBox(doc,"Zone de texte 1942955975",0,money(data.assuranceColocMensuelle));
 setTableCell(doc,1,0,1,num(data.loyer)?num(data.loyer).toLocaleString("fr-FR")+" €":"");setTableCell(doc,1,1,1,num(data.chargesMontant)?num(data.chargesMontant).toLocaleString("fr-FR")+" €":"");let row=2;if(data.type==="nu"){setTableCell(doc,1,row++,1,num(data.contribution)?num(data.contribution).toLocaleString("fr-FR")+" €":"");}setTableCell(doc,1,row++,1,num(data.assuranceColocMensuelle)?num(data.assuranceColocMensuelle).toLocaleString("fr-FR")+" €":"");const total=num(data.loyer)+num(data.chargesMontant)+num(data.assuranceColocMensuelle)+(data.type==="nu"?num(data.contribution):0);setTableCell(doc,1,row,1,total?total.toLocaleString("fr-FR")+" €":"");
 setBox(doc,"Zone de texte 561389577",0,data.depensesEnergie);setBox(doc,"Zone de texte 374328480",0,data.anneeEnergie);setBox(doc,"Zone de texte 2135196039",0,data.travauxRecents);setBox(doc,"Zone de texte 1974909847",0,data.majorationTravaux);setBox(doc,"Zone de texte 1136262404",0,data.diminutionTravaux);setBox(doc,"Zone de texte 2071132409",0,moneyWords(data.depotGarantie));setBox(doc,"Zone de texte 520617941",0,data.congeLocataire);setBox(doc,"Zone de texte 1418093311",0,data.conditionsLocataire);setBox(doc,"Zone de texte 1121375395",0,data.conditionsBailleur);setBox(doc,"Zone de texte 676414816",0,data.caution);
