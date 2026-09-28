@@ -30,6 +30,57 @@ function findParagraphCI(doc,needle){
 }
 
 
+
+function setSdtCheckboxState(sdt,on){
+  const W14="http://schemas.microsoft.com/office/word/2010/wordml";
+  const cb=[...sdt.getElementsByTagNameNS(W14,"checkbox")][0];
+  if(cb){
+    let checked=[...cb.getElementsByTagNameNS(W14,"checked")][0];
+    if(!checked){checked=sdt.ownerDocument.createElementNS(W14,"w14:checked");cb.insertBefore(checked,cb.firstChild)}
+    checked.setAttributeNS(W14,"w14:val",on?"1":"0");
+  }
+  for(const t of sdt.getElementsByTagNameNS(W,"t")){
+    if(/[☐☒]/.test(t.textContent||""))t.textContent=(t.textContent||"").replace(/[☐☒]/,on?"☒":"☐");
+  }
+}
+function paragraphCheckboxSdts(p){
+  const W14="http://schemas.microsoft.com/office/word/2010/wordml";
+  return [...p.getElementsByTagNameNS(W,"sdt")].filter(s=>s.getElementsByTagNameNS(W14,"checkbox").length);
+}
+function nextCheckboxParagraph(doc,labelNeedle){
+  const ps=[...doc.getElementsByTagNameNS(W,"p")],n=String(labelNeedle||"").toLowerCase();
+  const i=ps.findIndex(p=>String(p.textContent||"").toLowerCase().includes(n));
+  if(i<0)return null;
+  for(let j=i;j<Math.min(ps.length,i+6);j++)if(paragraphCheckboxSdts(ps[j]).length)return ps[j];
+  return null;
+}
+function setEnergyExact(doc,labelNeedle,mode,energy,customText,boxTitle){
+  const p=nextCheckboxParagraph(doc,labelNeedle);if(!p)return false;
+  const boxes=paragraphCheckboxSdts(p);
+  const states=[mode==="individuel",mode==="collectif",energy==="gaz",energy==="electricite",energy==="autre"];
+  boxes.slice(0,5).forEach((s,i)=>setSdtCheckboxState(s,!!states[i]));
+  setBox(doc,boxTitle,0,energy==="autre"?(customText||""):"");
+  return true;
+}
+function setLabeledCheckboxExact(doc,labelNeedle,on){
+  const ps=[...doc.getElementsByTagNameNS(W,"p")],n=String(labelNeedle||"").toLowerCase();
+  for(const p of ps){
+    const text=String(p.textContent||"").toLowerCase();
+    if(!text.includes(n))continue;
+    const sdts=paragraphCheckboxSdts(p),runs=[...p.children];
+    for(const sdt of sdts){
+      const idx=runs.indexOf(sdt);
+      let after="";
+      for(let j=idx+1;j<runs.length;j++){
+        if(runs[j].localName==="sdt")break;
+        after+=runs[j].textContent||"";
+      }
+      if(after.toLowerCase().includes(n)){setSdtCheckboxState(sdt,on);return true}
+    }
+  }
+  return false;
+}
+
 function setParagraphCheckboxes(doc,paragraphNeedle,states){
   const p=findParagraphCI(doc,paragraphNeedle);if(!p)return false;
   let changed=false,idx=0;
@@ -528,43 +579,33 @@ if(data.gestion==="hors"){setBox(doc,"Zone de texte 478161165",0,data.bailleurs.
 data.locataires.slice(0,4).forEach((p,i)=>{setTableCell(doc,0,i+1,0,partyName(p));setTableCell(doc,0,i+1,1,[dateFr(p.naissance),p.lieuNaissance].filter(Boolean).join(" à "));setTableCell(doc,0,i+1,2,p.email);setTableCell(doc,0,i+1,3,p.tel)});
 setBox(doc,"Zone de texte 2",1,data.localisation);setChoice(doc,"Type d’habitat",data.habitat==="individuel"?1:0);setBox(doc,"Zone de texte 126861955",0,data.identifiantFiscal);setChoice(doc,"Régime juridique de l’immeuble",data.regime==="monopropriete"?1:0);
 const periods=["avant1949","1949-1974","1975-1989","1989-2005","depuis2005"];setChoice(doc,"Avant 1949",Math.max(0,periods.indexOf(data.periode)),5);
-setBox(doc,"Zone de texte 660593113",0,data.surface);setBoxNearLabel(doc,"Surface habitable",data.surface,false);setBoxNearLabel(doc,"Nombre de pièces principales",data.pieces,true);setBox(doc,"Zone de texte 507952355",0,data.caracteristiques);setBox(doc,"Zone de texte 1328110326",0,data.autresPartiesAutre||data.autresParties);setBox(doc,"Zone de texte 868199202",0,data.equipementsAutre||data.equipements);setBox(doc,"Zone de texte 1728029714",0,"");
+setBox(doc,"Zone de texte 1115947929",0,data.surface);setBox(doc,"Zone de texte 660593113",0,data.pieces);setBox(doc,"Zone de texte 507952355",0,data.caracteristiques);setBox(doc,"Zone de texte 1328110326",0,data.autresPartiesAutre||data.autresParties);setBox(doc,"Zone de texte 868199202",0,data.equipementsAutre||data.equipements);setBox(doc,"Zone de texte 1728029714",0,"");
 const otherLabels={"Grenier":"grenier","Comble aménagé":"comble aménagé","Comble non aménagé":"comble non aménagé","Terrasse":"terrasse","Balcon":"balcon","Loggia":"loggia","Jardin":"jardin"};
 for(const [label,needle] of Object.entries(otherLabels))setCheckByLabel(doc,"Autres parties du logement",needle,!!(data.autresPartiesChoix||{})[label]);
 const eqLabels={"Cuisine équipée":"Cuisine équipée","Salle de bain":"Salle de bain","Salle de douche":"Salle de douche","WC séparé":"WC séparé"};
 for(const [label,needle] of Object.entries(eqLabels))setCheckByLabel(doc,"Eléments d’équipements du logement",needle,!!(data.equipementsChoix||{})[label]);setBox(doc,"Zone de texte 85956290",0,"");
-setEnergyLine(doc,"Modalité de répartition du chauffage",data.chauffageMode,data.chauffageEnergie,data.chauffageAutre,"Zone de texte 1728029714");setEnergyLine(doc,"Modalité de répartition de l’eau chaude",data.eauMode,data.eauEnergie,data.eauAutre,"Zone de texte 85956290");setChoice(doc,"À usage exclusif d’habitation principale",data.destination==="mixte"?1:0);setBox(doc,"Zone de texte 1029441271",0,data.professionMixte);setBox(doc,"Zone de texte 1625481562",0,data.accessoiresPrivatifsAutre||data.accessoiresPrivatifs);setBox(doc,"Zone de texte 6783576",0,data.partiesCommunesAutre||data.partiesCommunes);
-for(const label of ["Cave","Parking","Garage"])setCheckAndNumber(doc,label,!!(data.accessoiresPrivatifsChoix||{})[label],(data.accessoiresPrivatifsNumeros||{})[label]);
+setEnergyExact(doc,"Modalité de répartition du chauffage",data.chauffageMode,data.chauffageEnergie,data.chauffageAutre,"Zone de texte 1728029714");setEnergyExact(doc,"Modalité de répartition de l’eau chaude sanitaire",data.eauMode,data.eauEnergie,data.eauAutre,"Zone de texte 85956290");setChoice(doc,"À usage exclusif d’habitation principale",data.destination==="mixte"?1:0);setBox(doc,"Zone de texte 1029441271",0,data.professionMixte);setBox(doc,"Zone de texte 1625481562",0,data.accessoiresPrivatifsAutre||data.accessoiresPrivatifs);setBox(doc,"Zone de texte 6783576",0,data.partiesCommunesAutre||data.partiesCommunes);
+for(const label of ["Cave","Parking","Garage"]){const on=!!(data.accessoiresPrivatifsChoix||{})[label];setLabeledCheckboxExact(doc,label,on);setCheckAndNumber(doc,label,on,(data.accessoiresPrivatifsNumeros||{})[label]);}
 for(const label of ["Garage à vélo","Ascenseur","Espaces verts","Aires et équipements de jeux","Laverie","Local poubelle","Gardiennage"])setCheckAndNumber(doc,label,!!(data.partiesCommunesChoix||{})[label],(data.partiesCommunesNumeros||{})[label]);setBox(doc,"Zone de texte 630456886",0,data.technologies);
 setBox(doc,"Zone de texte 2077289405",0,data.dateEffet);setBox(doc,"Zone de texte 998965608",0,data.duree);setBox(doc,"Zone de texte 760777164",0,data.raisonDureeReduite);
 setBox(doc,"Zone de texte 628403819",0,moneyWords(data.loyer));setChoice(doc,"décret fixant annuellement",data.decretRelocation==="oui"?0:1);setChoice(doc,"loyer de référence majoré",data.encadrement==="oui"?0:1);setBox(doc,"Zone de texte 268514384",0,money(data.loyerBase));setBox(doc,"Zone de texte 475039207",0,money(data.complementLoyer));
 
-// Ces zones changent d'identifiant selon les 4 modèles Word : on les cible par leur libellé visible.
-if(!setBoxNearLabel(doc,"Dernier loyer",money(data.dernierLoyer),true))setBox(doc,"Zone de texte 31722978",0,money(data.dernierLoyer));
-if(!setBoxNearLabel(doc,"Date de versement",dateFr(data.dateVersementDernier),true))setBox(doc,"Zone de texte 1040080526",0,dateFr(data.dateVersementDernier));
-if(!setBoxNearLabel(doc,"Date de la dernière révision",dateFr(data.dateDerniereRevision),true))setBox(doc,"Zone de texte 1259670285",0,dateFr(data.dateDerniereRevision));
-if(!setBoxNearLabel(doc,"Date de révision",dateFr(data.dateRevision),true))setBox(doc,"Zone de texte 1359800534",0,dateFr(data.dateRevision));
+// Correspondance exacte du modèle "CONTRAT DE LOCATION NU GESTION".
+setBox(doc,"Zone de texte 31722978",0,money(data.dernierLoyer));
+setBox(doc,"Zone de texte 1040080526",0,dateFr(data.dateVersementDernier));
+setBox(doc,"Zone de texte 1259670285",0,dateFr(data.dateDerniereRevision));
+setBox(doc,"Zone de texte 1542835909",0,dateFr(data.dateRevision));
 
 const q=Number(data.irlTrimestre)||0,qLabel=q?(q===1?"1er trimestre":q+"ème trimestre"):"";
 const irlText=qLabel&&data.irlAnnee?(qLabel+" "+data.irlAnnee+(data.irlValeur?" d'une valeur de "+data.irlValeur:"")):(data.irl||"");
-if(!setBoxNearLabel(doc,"Trimestre de référence de l’IRL",irlText,true)&&!setBoxNearLabel(doc,"Trimestre de référence de l'IRL",irlText,true))setBox(doc,"Zone de texte 85742337",0,irlText);
+setBox(doc,"Zone de texte 1359800534",0,irlText);
 
-const setChargeBox=(label,value,fallback)=>{
-  if(!setBoxNearLabel(doc,label,value,true)&&fallback)setBox(doc,fallback,0,value);
-};
-if(data.chargesMode==="provision"){
-  setCheck(doc,"Provision mensuelle",true,0);setCheck(doc,"Forfait d’un montant",false,0);setCheck(doc,"Remboursement sur justificatif",false,0);
-  setChargeBox("Provision mensuelle",money(data.chargesMontant),"Zone de texte 2048181660");
-  setChargeBox("Forfait d’un montant","",null);setChargeBox("Remboursement sur justificatif","",null);
-}
-if(data.chargesMode==="forfait"){
-  setCheck(doc,"Provision mensuelle",false,0);setCheck(doc,"Forfait d’un montant",true,0);setCheck(doc,"Remboursement sur justificatif",false,0);
-  setChargeBox("Provision mensuelle","",null);setChargeBox("Forfait d’un montant",money(data.chargesMontant),"Zone de texte 792361571");setChargeBox("Remboursement sur justificatif","",null);
-}
-if(data.chargesMode==="justificatif"){
-  setCheck(doc,"Provision mensuelle",false,0);setCheck(doc,"Forfait d’un montant",false,0);setCheck(doc,"Remboursement sur justificatif",true,0);
-  setChargeBox("Provision mensuelle","",null);setChargeBox("Forfait d’un montant","",null);setChargeBox("Remboursement sur justificatif",money(data.chargesMontant),null);
-}
+setLabeledCheckboxExact(doc,"Provision mensuelle",data.chargesMode==="provision");
+setLabeledCheckboxExact(doc,"Forfait d’un montant",data.chargesMode==="forfait");
+setLabeledCheckboxExact(doc,"Remboursement sur justificatif",data.chargesMode==="justificatif");
+setBox(doc,"Zone de texte 85742337",0,data.chargesMode==="provision"?money(data.chargesMontant):"");
+setBox(doc,"Zone de texte 2048181660",0,data.chargesMode==="forfait"?money(data.chargesMontant):"");
+setBox(doc,"Zone de texte 792361571",0,data.chargesMode==="justificatif"?money(data.chargesMontant):"");
 setBox(doc,"Zone de texte 1214938885",0,data.contribution);setBox(doc,"Zone de texte 904827124",0,data.justifContribution);setBox(doc,"Zone de texte 1352093729",0,money(data.assuranceColocAnnuelle));setBox(doc,"Zone de texte 1942955975",0,money(data.assuranceColocMensuelle));
 setTableCell(doc,1,0,1,num(data.loyer)?num(data.loyer).toLocaleString("fr-FR")+" €":"");setTableCell(doc,1,1,1,num(data.chargesMontant)?num(data.chargesMontant).toLocaleString("fr-FR")+" €":"");let row=2;if(data.type==="nu"){setTableCell(doc,1,row++,1,num(data.contribution)?num(data.contribution).toLocaleString("fr-FR")+" €":"");}setTableCell(doc,1,row++,1,num(data.assuranceColocMensuelle)?num(data.assuranceColocMensuelle).toLocaleString("fr-FR")+" €":"");const total=num(data.loyer)+num(data.chargesMontant)+num(data.assuranceColocMensuelle)+(data.type==="nu"?num(data.contribution):0);setTableCell(doc,1,row,1,total?total.toLocaleString("fr-FR")+" €":"");
 setBox(doc,"Zone de texte 561389577",0,data.depensesEnergie);setBox(doc,"Zone de texte 374328480",0,data.anneeEnergie);setBox(doc,"Zone de texte 2135196039",0,data.travauxRecents);setBox(doc,"Zone de texte 1974909847",0,data.majorationTravaux);setBox(doc,"Zone de texte 1136262404",0,data.diminutionTravaux);setBox(doc,"Zone de texte 2071132409",0,moneyWords(data.depotGarantie));setBox(doc,"Zone de texte 520617941",0,data.congeLocataire);setBox(doc,"Zone de texte 1418093311",0,data.conditionsLocataire);setBox(doc,"Zone de texte 1121375395",0,data.conditionsBailleur);setBox(doc,"Zone de texte 676414816",0,data.caution);
