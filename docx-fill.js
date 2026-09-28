@@ -13,6 +13,22 @@ function findParagraphCI(doc,needle){
   const n=String(needle||"").toLowerCase();
   return [...doc.getElementsByTagNameNS(W,"p")].find(p=>String(p.textContent||"").toLowerCase().includes(n));
 }
+
+function setEnergyLine(doc,paragraphNeedle,mode,energy,customText,boxTitle){
+  const p=findParagraphCI(doc,paragraphNeedle);if(!p)return;
+  const ts=[...p.getElementsByTagNameNS(W,"t")];
+  const tickNear=(label,on)=>{
+    const li=ts.findIndex(t=>String(t.textContent||"").toLowerCase().includes(String(label).toLowerCase()));
+    if(li<0)return;
+    for(let i=li;i>=0;i--)if(/[☐☒]/.test(ts[i].textContent||"")){ts[i].textContent=(ts[i].textContent||"").replace(/[☐☒]/,on?"☒":"☐");return}
+  };
+  tickNear("Individuel",mode==="individuel");tickNear("Collectif",mode==="collectif");
+  tickNear("Gaz",energy==="gaz");tickNear("Electrique",energy==="electricite");
+  // Le 3e choix énergie du modèle est la case "Autre", immédiatement avant le champ libre.
+  setCheckboxBeforeBox(doc,boxTitle,energy==="autre");
+  setBox(doc,boxTitle,0,energy==="autre"?(customText||""):"");
+}
+
 function setCheckboxBeforeBox(doc,boxTitle,on){
   const controls=[...doc.getElementsByTagNameNS(W,"sdt")];
   const box=controls.find(s=>[...s.getElementsByTagNameNS(W,"alias")].some(a=>a.getAttributeNS(W,"val")===boxTitle||a.getAttribute("w:val")===boxTitle));
@@ -461,8 +477,7 @@ const otherLabels={"Grenier":"grenier","Comble aménagé":"comble aménagé","Co
 for(const [label,needle] of Object.entries(otherLabels))setCheckByLabel(doc,"Autres parties du logement",needle,!!(data.autresPartiesChoix||{})[label]);
 const eqLabels={"Cuisine équipée":"Cuisine équipée","Salle de bain":"Salle de bain","Salle de douche":"Salle de douche","WC séparé":"WC séparé"};
 for(const [label,needle] of Object.entries(eqLabels))setCheckByLabel(doc,"Eléments d’équipements du logement",needle,!!(data.equipementsChoix||{})[label]);setBox(doc,"Zone de texte 85956290",0,"");
-setChoice(doc,"Modalité de répartition du chauffage",data.chauffageMode==="collectif"?1:0);setCheckByLabel(doc,"Modalité de répartition du chauffage","Gaz",data.chauffageEnergie==="gaz");setCheckByLabel(doc,"Modalité de répartition du chauffage","Électrique",data.chauffageEnergie==="electricite");setCheckByLabel(doc,"Modalité de répartition du chauffage","Autre",data.chauffageEnergie==="autre");setCheckboxBeforeBox(doc,"Zone de texte 1728029714",data.chauffageEnergie==="autre");setBox(doc,"Zone de texte 1728029714",0,data.chauffageEnergie==="autre"?(data.chauffageAutre||""):"");setChoice(doc,"Modalité de répartition de l’eau chaude",data.eauMode==="collectif"?1:0);setCheckByLabel(doc,"Modalité de répartition de l’eau chaude","Gaz",data.eauEnergie==="gaz");setCheckByLabel(doc,"Modalité de répartition de l’eau chaude","Électrique",data.eauEnergie==="electricite");setCheckByLabel(doc,"Modalité de répartition de l’eau chaude","Autre",data.eauEnergie==="autre");setCheckboxBeforeBox(doc,"Zone de texte 85956290",data.eauEnergie==="autre");setBox(doc,"Zone de texte 85956290",0,data.eauEnergie==="autre"?(data.eauAutre||""):"");
-setChoice(doc,"À usage exclusif d’habitation principale",data.destination==="mixte"?1:0);setBox(doc,"Zone de texte 1029441271",0,data.professionMixte);setBox(doc,"Zone de texte 1625481562",0,data.accessoiresPrivatifsAutre||data.accessoiresPrivatifs);setBox(doc,"Zone de texte 6783576",0,data.partiesCommunesAutre||data.partiesCommunes);
+setEnergyLine(doc,"Modalité de répartition du chauffage",data.chauffageMode,data.chauffageEnergie,data.chauffageAutre,"Zone de texte 1728029714");setEnergyLine(doc,"Modalité de répartition de l’eau chaude",data.eauMode,data.eauEnergie,data.eauAutre,"Zone de texte 85956290");setChoice(doc,"À usage exclusif d’habitation principale",data.destination==="mixte"?1:0);setBox(doc,"Zone de texte 1029441271",0,data.professionMixte);setBox(doc,"Zone de texte 1625481562",0,data.accessoiresPrivatifsAutre||data.accessoiresPrivatifs);setBox(doc,"Zone de texte 6783576",0,data.partiesCommunesAutre||data.partiesCommunes);
 for(const label of ["Cave","Parking","Garage"])setCheckAndNumber(doc,label,!!(data.accessoiresPrivatifsChoix||{})[label],(data.accessoiresPrivatifsNumeros||{})[label]);
 for(const label of ["Garage à vélo","Ascenseur","Espaces verts","Aires et équipements de jeux","Laverie","Local poubelle","Gardiennage"])setCheckAndNumber(doc,label,!!(data.partiesCommunesChoix||{})[label],(data.partiesCommunesNumeros||{})[label]);setBox(doc,"Zone de texte 630456886",0,data.technologies);
 setBox(doc,"Zone de texte 2077289405",0,data.dateEffet);setBox(doc,"Zone de texte 998965608",0,data.duree);setBox(doc,"Zone de texte 760777164",0,data.raisonDureeReduite);
