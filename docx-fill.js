@@ -14,17 +14,51 @@ function findParagraphCI(doc,needle){
   return [...doc.getElementsByTagNameNS(W,"p")].find(p=>String(p.textContent||"").toLowerCase().includes(n));
 }
 
+
+function setParagraphCheckboxes(doc,paragraphNeedle,states){
+  const p=findParagraphCI(doc,paragraphNeedle);if(!p)return false;
+  let changed=false,idx=0;
+
+  // 1) Cases représentées par des glyphes ☐ / ☒.
+  for(const t of p.getElementsByTagNameNS(W,"t")){
+    let s=t.textContent||"";
+    if(/[☐☒]/.test(s)&&idx<states.length){
+      t.textContent=s.replace(/[☐☒]/,states[idx++]?"☒":"☐");
+      changed=true;
+    }
+  }
+  if(idx>=states.length)return changed;
+
+  // 2) Anciennes cases formulaire Word (w:checkBox / w:default).
+  const checkBoxes=[...p.getElementsByTagNameNS(W,"checkBox")];
+  for(const cb of checkBoxes){
+    if(idx>=states.length)break;
+    let def=cb.getElementsByTagNameNS(W,"default")[0];
+    if(!def){def=doc.createElementNS(W,"w:default");cb.appendChild(def)}
+    def.setAttributeNS(W,"w:val",states[idx++]?"1":"0");
+    changed=true;
+  }
+  if(idx>=states.length)return changed;
+
+  // 3) Cases modernes Word (w14:checkbox / w14:checked).
+  const all=[...p.getElementsByTagName("*")];
+  for(const el of all){
+    if(idx>=states.length)break;
+    if(el.localName==="checkbox"){
+      const checked=[...el.getElementsByTagName("*")].find(x=>x.localName==="checked");
+      if(checked){
+        checked.setAttribute("w14:val",states[idx++]?"1":"0");
+        changed=true;
+      }
+    }
+  }
+  return changed;
+}
+
 function setEnergyLine(doc,paragraphNeedle,mode,energy,customText,boxTitle){
-  const p=findParagraphCI(doc,paragraphNeedle);if(!p)return;
-  const ts=[...p.getElementsByTagNameNS(W,"t")];
-  const tickNear=(label,on)=>{
-    const li=ts.findIndex(t=>String(t.textContent||"").toLowerCase().includes(String(label).toLowerCase()));
-    if(li<0)return;
-    for(let i=li;i>=0;i--)if(/[☐☒]/.test(ts[i].textContent||"")){ts[i].textContent=(ts[i].textContent||"").replace(/[☐☒]/,on?"☒":"☐");return}
-  };
-  tickNear("Individuel",mode==="individuel");tickNear("Collectif",mode==="collectif");
-  tickNear("Gaz",energy==="gaz");tickNear("Electrique",energy==="electricite");
-  // Le 3e choix énergie du modèle est la case "Autre", immédiatement avant le champ libre.
+  // Ordre réel des cases dans les modèles : Individuel, Collectif, Gaz, Electrique, Autre.
+  const states=[mode==="individuel",mode==="collectif",energy==="gaz",energy==="electricite",energy==="autre"];
+  setParagraphCheckboxes(doc,paragraphNeedle,states);
   setCheckboxBeforeBox(doc,boxTitle,energy==="autre");
   setBox(doc,boxTitle,0,energy==="autre"?(customText||""):"");
 }
