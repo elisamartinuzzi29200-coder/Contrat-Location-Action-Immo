@@ -1,5 +1,5 @@
-const sections=["Type de contrat","Bailleur(s)","Locataire(s)","Logement","Durée","Finances","Honoraires de location","Travaux / garanties","Annexes","Avenant au contrat","Acte de caution","Récapitulatif"];
-let step=0,viewMode="dashboard",currentId=null;
+const sections=["Type de contrat","Bailleur(s)","Locataire(s)","Logement","Durée","Finances","Honoraires de location","Travaux / garanties","Annexes","Avenant au contrat","Récapitulatif"];
+let step=0,viewMode="dashboard",currentId=null,cautionView=false;
 const models={nu_gestion:{label:"Location nue — gestion"},nu_hors:{label:"Location nue — hors gestion"},meuble_gestion:{label:"Location meublée — gestion"},meuble_hors:{label:"Location meublée — hors gestion"}};
 const extraModels={caution:{label:"Acte de cautionnement"}};
 const blankBailleur=()=>({type:"physique",nom:"",prenoms:"",denomination:"",adresse:"",email:"",tel:""});
@@ -18,7 +18,7 @@ function newDossier(){
 }
 function startBlankDossier(){
   currentId="loc_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
-  data=initial();step=0;viewMode="editor";$("newDossierModal").classList.add("hidden");render();
+  data=initial();step=0;cautionView=false;viewMode="editor";$("newDossierModal").classList.add("hidden");render();
 }
 function sanitizeImportedData(imported){
   const clean={...initial(),...imported};
@@ -78,7 +78,7 @@ function saveDossier(){
 }
 function openDossier(id){
   const item=loadDossiers().find(x=>x.id===id);if(!item)return;
-  currentId=id;data={...initial(),...item.data};step=0;viewMode="editor";render();
+  currentId=id;data={...initial(),...item.data};step=0;cautionView=false;viewMode="editor";render();
 }
 function duplicateDossier(id){
   const item=loadDossiers().find(x=>x.id===id);if(!item)return;
@@ -103,11 +103,25 @@ const cautionDefaults=()=>({civilite:"Monsieur",nom:"",prenoms:"",naissance:"",l
 function ensureCaution(){data.cautionActe={...cautionDefaults(),...(data.cautionActe||{})};return data.cautionActe}
 function cautionField(label,key,type="text",full=false){const s=ensureCaution();return `<div class="field ${full?"full":""}"><label>${label}</label><input type="${type}" data-caution="${key}" value="${esc(s[key])}"></div>`}
 function cautionSelect(label,key,opts){const s=ensureCaution();return `<div class="field"><label>${label}</label><select data-caution="${key}">${opts.map(([v,n])=>`<option value="${v}" ${s[key]===v?"selected":""}>${n}</option>`).join("")}</select></div>`}
+
+const IRL_VALUES={
+"2022-1":"133.93","2022-2":"135.84","2022-3":"136.27","2022-4":"137.26",
+"2023-1":"138.61","2023-2":"140.59","2023-3":"141.03","2023-4":"142.06",
+"2024-1":"143.46","2024-2":"145.17","2024-3":"144.51","2024-4":"144.64",
+"2025-1":"145.47","2025-2":"146.68","2025-3":"145.77","2025-4":"145.78",
+"2026-1":"146.60","2026-2":"148.37"};
+function syncIrlValue(){
+ const s=ensureCaution(),key=String(s.irlAnnee||"")+"-"+String(s.irlTrimestre||"");
+ const v=IRL_VALUES[key]||"";
+ if(v){s.irlValeur=v;data.irl=[s.irlTrimestre+"e trimestre",s.irlAnnee,"IRL "+v].join(" — ")}
+ return v;
+}
+
 function parseIrlForCaution(){
   const s=ensureCaution(),raw=String(data.irl||"");
   if(!s.irlTrimestre){const m=raw.match(/\b([1-4])(?:er|e|ème)?\s*(?:trimestre|trim\.?)/i);if(m)s.irlTrimestre=m[1]}
   if(!s.irlAnnee){const m=raw.match(/\b(20\d{2})\b/);if(m)s.irlAnnee=m[1]}
-  if(!s.irlValeur){const nums=[...raw.matchAll(/\b(\d{2,3}[.,]\d{1,3})\b/g)].map(x=>x[1]);if(nums.length)s.irlValeur=nums[nums.length-1]}
+  if(!s.irlValeur){const nums=[...raw.matchAll(/\b(\d{2,3}[.,]\d{1,3})\b/g)].map(x=>x[1]);if(nums.length)s.irlValeur=nums[nums.length-1]}syncIrlValue();
   return s;
 }
 
@@ -148,7 +162,7 @@ function renderDashboard(){
   document.querySelectorAll("[data-duplicate]").forEach(x=>x.onclick=()=>duplicateDossier(x.dataset.duplicate));
   document.querySelectorAll("[data-delete]").forEach(x=>x.onclick=()=>deleteDossier(x.dataset.delete));
 }
-function render(){if(viewMode==="dashboard"){renderDashboard();return}$("prev").style.display="";$("next").style.display="";$("nav").innerHTML=sections.map((s,i)=>`<button data-step="${i}" class="${i===step?"active":""}">${i+1}. ${s}</button>`).join("");let h=`<h2>${sections[step]}</h2><p class="hint">Les données saisies servent à remplir automatiquement le bon modèle Word sans modifier ses clauses fixes.</p>`;
+function render(){if(viewMode==="dashboard"){renderDashboard();return}if(cautionView){renderCautionView();return}$("prev").style.display="";$("next").style.display="";$("nav").innerHTML=sections.map((s,i)=>`<button data-step="${i}" class="${i===step?"active":""}">${i+1}. ${s}</button>`).join("");let h=`<h2>${sections[step]}</h2><p class="hint">Les données saisies servent à remplir automatiquement le bon modèle Word sans modifier ses clauses fixes.</p>`;
 if(step===0)h+=`<div class="choiceGrid"><div class="box"><strong>Type de location</strong><label class="check"><input type="radio" name="type" value="nu" ${data.type==="nu"?"checked":""}>Logement nu</label><label class="check"><input type="radio" name="type" value="meuble" ${data.type==="meuble"?"checked":""}>Logement meublé</label></div><div class="box"><strong>Gestion</strong><label class="check"><input type="radio" name="gestion" value="gestion" ${data.gestion==="gestion"?"checked":""}>Gestion Action Immobilière</label><label class="check"><input type="radio" name="gestion" value="hors" ${data.gestion==="hors"?"checked":""}>Hors gestion</label></div></div><div class="notice">Modèle sélectionné : <strong>${models[data.type+"_"+data.gestion].label}</strong></div>`;
 if(step===1)h+=bailleursHtml();
 if(step===2)h+=locatairesHtml();
@@ -163,8 +177,10 @@ if(step===6){
 if(step===7)h+=`<div class="grid">${F("Dépôt de garantie (€)","depotGarantie","number")}${T("Travaux récents / mise en conformité","travauxRecents")}${T("Majoration de loyer liée à des travaux","majorationTravaux")}${T("Diminution de loyer liée à des travaux","diminutionTravaux")}${Sel("Sinistre indemnisé catastrophe naturelle / technologique","sinistre",[["non","Non"],["oui","Oui"]])}${F("Date de congé du locataire en place","congeLocataire","date")}${T("Conditions particulières / obligations locataire","conditionsLocataire")}${T("Conditions particulières / obligations bailleur","conditionsBailleur")}${T("Caution solidaire","caution")}</div>`;
 if(step===8)h+=`<div class="notice">Coche uniquement les annexes effectivement jointes au bail.</div><div class="grid">${annexes.map(a=>`<label class="check"><input type="checkbox" data-annexe="${esc(a)}" ${data.annexes[a]?"checked":""}>${a}</label>`).join("")}</div>`;
 if(step===9)h+=`<div class="notice">Ces cases correspondent à la page « AVENANT AU CONTRAT DE LOCATION » du modèle Word.</div><div class="section">La provision sur charges comprend</div><div class="grid">${avenantCharges.map(a=>`<label class="check"><input type="checkbox" data-avcharge="${esc(a)}" ${data.avenantCharges[a]?"checked":""}>${a}</label>`).join("")}</div><div class="section">Informations diverses</div><div class="grid">${avenantInfos.map(a=>`<label class="check"><input type="checkbox" data-avinfo="${esc(a)}" ${data.avenantInfos[a]?"checked":""}>${a}</label>`).join("")}</div>`;
-if(step===10){
+function renderCautionView(){
   const s=parseIrlForCaution();
+  $("nav").innerHTML="";$("prev").style.display="none";$("next").style.display="none";let h=`<h2>Acte de caution</h2>`;
+
   const bailleurs=data.bailleurs.map(p=>p.type==="morale"?(p.denomination||""):[p.nom,p.prenoms].filter(Boolean).join(" ")).filter(Boolean).join(" / ");
   const locataires=data.locataires.map(p=>[p.nom,p.prenoms].filter(Boolean).join(" ")).filter(Boolean).join(" / ");
   h+=`<div class="notice">Les informations du bail sont reprises automatiquement. Renseigne uniquement les informations propres à la caution et les paramètres de durée qui ne figurent pas dans le bail.</div>
@@ -189,10 +205,11 @@ if(step===10){
   </div>
   <div class="box"><strong>Données reprises du bail</strong><p>Bailleur(s) : ${esc(bailleurs||"Non renseigné")}</p><p>Locataire(s) : ${esc(locataires||"Non renseigné")}</p><p>Bien : ${esc(data.localisation||"Non renseigné")}</p><p>Loyer : ${esc(data.loyer||"")} € — Charges : ${esc(data.chargesMontant||"")} € — Dépôt : ${esc(data.depotGarantie||"")} €</p><p>Prise d'effet : ${esc(data.dateEffet||"")} — Durée : ${esc(data.duree||"")}</p></div>
   <button type="button" class="primary bigAction" id="generateCautionBtn">Générer l'acte de caution</button>`;
+$("content").innerHTML=h;$("generateBtn").textContent="Générer l'acte de caution";bind();const gc=$("generateCautionBtn");if(gc)gc.onclick=generateCautionDocument;
 }
-if(step===11){const b=data.bailleurs.map(p=>p.type==="morale"?p.denomination:[p.nom,p.prenoms].filter(Boolean).join(" ")).filter(Boolean).join(", "),l=data.locataires.map(p=>[p.nom,p.prenoms].filter(Boolean).join(" ")).filter(Boolean).join(", ");h+=`<div class="notice">Le bouton « Générer le Word » utilisera automatiquement <strong>${models[data.type+"_"+data.gestion].label}</strong>.</div><div class="box"><strong>Bailleur(s)</strong><p>${esc(b||"Non renseigné")}</p><strong>Locataire(s)</strong><p>${esc(l||"Non renseigné")}</p><strong>Logement</strong><p>${esc(data.localisation||"Non renseigné")}</p><strong>Loyer</strong><p>${esc(data.loyer||"Non renseigné")} €</p></div>`}
-$("content").innerHTML=h;$("generateBtn").textContent=step===10?"Générer l'acte de caution":"Générer le Word";bind();const gc=$("generateCautionBtn");if(gc)gc.onclick=generateCautionDocument}
-function bind(){document.querySelectorAll("[data-step]").forEach(x=>x.onclick=()=>{step=+x.dataset.step;render()});document.querySelectorAll("[data-key]").forEach(x=>x.oninput=x.onchange=()=>{data[x.dataset.key]=x.value;if(["destination"].includes(x.dataset.key))render()});document.querySelectorAll('input[name="type"]').forEach(x=>x.onchange=()=>{data.type=x.value;render()});document.querySelectorAll('input[name="gestion"]').forEach(x=>x.onchange=()=>{data.gestion=x.value;render()});document.querySelectorAll("[data-b]").forEach(x=>x.oninput=()=>{const[i,k]=x.dataset.b.split(":");data.bailleurs[+i][k]=x.value});document.querySelectorAll("[data-btype]").forEach(x=>x.onchange=()=>{data.bailleurs[+x.dataset.btype].type=x.value;render()});document.querySelectorAll("[data-l]").forEach(x=>x.oninput=()=>{const[i,k]=x.dataset.l.split(":");data.locataires[+i][k]=x.value});document.querySelectorAll("[data-addb]").forEach(x=>x.onclick=()=>{data.bailleurs.push(blankBailleur());render()});document.querySelectorAll("[data-addl]").forEach(x=>x.onclick=()=>{data.locataires.push(blankLoc());render()});document.querySelectorAll("[data-rmb]").forEach(x=>x.onclick=()=>{data.bailleurs.splice(+x.dataset.rmb,1);render()});document.querySelectorAll("[data-rml]").forEach(x=>x.onclick=()=>{data.locataires.splice(+x.dataset.rml,1);render()});document.querySelectorAll("[data-annexe]").forEach(x=>x.onchange=()=>data.annexes[x.dataset.annexe]=x.checked);document.querySelectorAll("[data-avcharge]").forEach(x=>x.onchange=()=>data.avenantCharges[x.dataset.avcharge]=x.checked);document.querySelectorAll("[data-avinfo]").forEach(x=>x.onchange=()=>data.avenantInfos[x.dataset.avinfo]=x.checked);document.querySelectorAll("[data-caution]").forEach(x=>x.oninput=x.onchange=()=>{ensureCaution()[x.dataset.caution]=x.value;if(x.dataset.caution==="contratType")render()})}
+if(step===10){const b=data.bailleurs.map(p=>p.type==="morale"?p.denomination:[p.nom,p.prenoms].filter(Boolean).join(" ")).filter(Boolean).join(", "),l=data.locataires.map(p=>[p.nom,p.prenoms].filter(Boolean).join(" ")).filter(Boolean).join(", ");h+=`<div class="notice">Le bouton « Générer le Word » utilisera automatiquement <strong>${models[data.type+"_"+data.gestion].label}</strong>.</div><div class="box"><strong>Bailleur(s)</strong><p>${esc(b||"Non renseigné")}</p><strong>Locataire(s)</strong><p>${esc(l||"Non renseigné")}</p><strong>Logement</strong><p>${esc(data.localisation||"Non renseigné")}</p><strong>Loyer</strong><p>${esc(data.loyer||"Non renseigné")} €</p></div>`}
+$("content").innerHTML=h;$("generateBtn").textContent="Générer le Word";bind();const gc=$("generateCautionBtn");if(gc)gc.onclick=generateCautionDocument}
+function bind(){document.querySelectorAll("[data-step]").forEach(x=>x.onclick=()=>{step=+x.dataset.step;render()});document.querySelectorAll("[data-key]").forEach(x=>x.oninput=x.onchange=()=>{data[x.dataset.key]=x.value;if(["destination"].includes(x.dataset.key))render()});document.querySelectorAll('input[name="type"]').forEach(x=>x.onchange=()=>{data.type=x.value;render()});document.querySelectorAll('input[name="gestion"]').forEach(x=>x.onchange=()=>{data.gestion=x.value;render()});document.querySelectorAll("[data-b]").forEach(x=>x.oninput=()=>{const[i,k]=x.dataset.b.split(":");data.bailleurs[+i][k]=x.value});document.querySelectorAll("[data-btype]").forEach(x=>x.onchange=()=>{data.bailleurs[+x.dataset.btype].type=x.value;render()});document.querySelectorAll("[data-l]").forEach(x=>x.oninput=()=>{const[i,k]=x.dataset.l.split(":");data.locataires[+i][k]=x.value});document.querySelectorAll("[data-addb]").forEach(x=>x.onclick=()=>{data.bailleurs.push(blankBailleur());render()});document.querySelectorAll("[data-addl]").forEach(x=>x.onclick=()=>{data.locataires.push(blankLoc());render()});document.querySelectorAll("[data-rmb]").forEach(x=>x.onclick=()=>{data.bailleurs.splice(+x.dataset.rmb,1);render()});document.querySelectorAll("[data-rml]").forEach(x=>x.onclick=()=>{data.locataires.splice(+x.dataset.rml,1);render()});document.querySelectorAll("[data-annexe]").forEach(x=>x.onchange=()=>data.annexes[x.dataset.annexe]=x.checked);document.querySelectorAll("[data-avcharge]").forEach(x=>x.onchange=()=>data.avenantCharges[x.dataset.avcharge]=x.checked);document.querySelectorAll("[data-avinfo]").forEach(x=>x.onchange=()=>data.avenantInfos[x.dataset.avinfo]=x.checked);document.querySelectorAll("[data-caution]").forEach(x=>x.oninput=x.onchange=()=>{ensureCaution()[x.dataset.caution]=x.value;if(["irlTrimestre","irlAnnee"].includes(x.dataset.caution)){syncIrlValue();render()}else if(x.dataset.caution==="contratType")render()})}
 function dbOpen(){return new Promise((res,rej)=>{const q=indexedDB.open("action-immo-location-models",1);q.onupgradeneeded=()=>q.result.createObjectStore("files");q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}
 async function putFile(key,file){const db=await dbOpen(),bytes=new Uint8Array(await file.arrayBuffer());return new Promise((res,rej)=>{const tx=db.transaction("files","readwrite");tx.objectStore("files").put({name:file.name,bytes},"model_"+key);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}
 async function getFile(key){try{const db=await dbOpen();return await new Promise((res,rej)=>{const tx=db.transaction("files","readonly"),q=tx.objectStore("files").get("model_"+key);q.onsuccess=()=>res(q.result||null);q.onerror=()=>rej(q.error)})}catch{return null}}
@@ -236,7 +253,7 @@ async function generateCautionDocument(){
     a.download="ACTE_DE_CAUTION_"+n+".docx";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   }catch(e){alert("Impossible de générer l'acte de caution : "+e.message)}
 }
-$("saveBtn").onclick=()=>{if(viewMode==="dashboard")return;saveDossier()};$("dashboardBtn").onclick=()=>{viewMode="dashboard";renderDashboard()};$("newBtn").onclick=newDossier;
-$("generateBtn").onclick=async()=>{try{if(viewMode==="dashboard"){alert("Ouvre d’abord un dossier.");return}if(step===10){await generateCautionDocument();return}const key=data.type+"_"+data.gestion,f=await getFile(key);if(!f){$("modelsModal").classList.remove("hidden");await renderTemplates();alert("Charge d’abord le modèle Word : "+models[key].label);return}saveDossier();const bytes=f.bytes instanceof Uint8Array?f.bytes:new Uint8Array(f.bytes),blob=await buildLocation(bytes,data),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="CONTRAT_LOCATION_"+data.type.toUpperCase()+"_"+(data.gestion==="gestion"?"GESTION":"HORS_GESTION")+"_REMPLI.docx";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}catch(e){alert("Impossible de générer le Word : "+e.message)}};
+$("saveBtn").onclick=()=>{if(viewMode==="dashboard")return;saveDossier()};$("dashboardBtn").onclick=()=>{cautionView=false;viewMode="dashboard";renderDashboard()};$("cautionTopBtn").onclick=()=>{if(viewMode==="dashboard"){alert("Ouvre d’abord un dossier.");return}cautionView=true;render()};$("newBtn").onclick=newDossier;
+$("generateBtn").onclick=async()=>{try{if(viewMode==="dashboard"){alert("Ouvre d’abord un dossier.");return}if(cautionView){await generateCautionDocument();return}const key=data.type+"_"+data.gestion,f=await getFile(key);if(!f){$("modelsModal").classList.remove("hidden");await renderTemplates();alert("Charge d’abord le modèle Word : "+models[key].label);return}saveDossier();const bytes=f.bytes instanceof Uint8Array?f.bytes:new Uint8Array(f.bytes),blob=await buildLocation(bytes,data),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="CONTRAT_LOCATION_"+data.type.toUpperCase()+"_"+(data.gestion==="gestion"?"GESTION":"HORS_GESTION")+"_REMPLI.docx";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}catch(e){alert("Impossible de générer le Word : "+e.message)}};
 $("prev").onclick=()=>{if(step>0){step--;render()}};$("next").onclick=()=>{if(step<sections.length-1){step++;render()}};
 renderDashboard();
