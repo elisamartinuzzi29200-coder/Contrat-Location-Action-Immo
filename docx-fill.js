@@ -416,3 +416,96 @@ for(const [label,key] of Object.entries(data.annexes||{}))setCheck(doc,label,!!k
 for(const [label,key] of Object.entries(data.avenantCharges||{}))setCheck(doc,label,!!key,0);
 for(const [label,key] of Object.entries(data.avenantInfos||{}))setCheck(doc,label,!!key,0);
 xf.data=te.encode(new XMLSerializer().serializeToString(doc));return new Blob([zip(files)],{type:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"})}
+
+function cautionDateFr(v){
+  const m=String(v||"").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m?m[3]+"/"+m[2]+"/"+m[1]:String(v||"");
+}
+function cautionMoneyNumber(v){
+  const n=num(v);
+  return n||String(v||"").trim()?n.toLocaleString("fr-FR",{minimumFractionDigits:Number.isInteger(n)?0:2,maximumFractionDigits:2}):"";
+}
+function cautionMoneyLetters(v){
+  const n=num(v);
+  if(!n&&String(v||"").trim()==="")return "";
+  const euros=Math.floor(n),cents=Math.round((n-euros)*100);
+  let s=numberToFrench(euros)+" euro"+(euros>1?"s":"");
+  if(cents)s+=" et "+numberToFrench(cents)+" centime"+(cents>1?"s":"");
+  return s;
+}
+async function buildCaution(templateBytes,data){
+  const files=await unzip(templateBytes),xf=files.find(f=>f.name==="word/document.xml");
+  if(!xf)throw Error("Modèle d'acte de caution incomplet");
+  const doc=new DOMParser().parseFromString(td.decode(xf.data),"application/xml");
+  const s={...(data.cautionActe||{})};
+  const bailNames=(data.bailleurs||[]).map(partyName).filter(Boolean).join(" / ");
+  const bailAddresses=(data.bailleurs||[]).map(p=>p.adresse||"").filter(Boolean).join(" / ");
+  const locNames=(data.locataires||[]).map(partyName).filter(Boolean).join(" / ");
+  const totalRevenus=num(s.remuneration)+num(s.autresRevenus);
+  const civilite=s.civilite||"";
+  const identite=[civilite,s.prenoms,s.nom].filter(Boolean).join(" ");
+  const birth=[cautionDateFr(s.naissance),s.lieuNaissance].filter(Boolean).join(" à ");
+  const loyerN=cautionMoneyNumber(data.loyer),chargesN=cautionMoneyNumber(data.chargesMontant),depotN=cautionMoneyNumber(data.depotGarantie);
+
+  setBox(doc,"Zone de texte 2",0,s.nom);
+  setBox(doc,"Zone de texte 2",1,s.prenoms);
+  setBox(doc,"Zone de texte 2",2,birth);
+  setBox(doc,"Zone de texte 2",3,s.domicile);
+  setBox(doc,"Zone de texte 2",4,s.email);
+  setBox(doc,"Zone de texte 2",5,s.tel);
+  setBox(doc,"Zone de texte 2",6,s.profession);
+  setBox(doc,"Zone de texte 2",7,s.employeur);
+  setBox(doc,"Zone de texte 2",8,s.contratType==="determinee"?cautionDateFr(s.contratFin):"");
+  setBox(doc,"Zone de texte 2",9,cautionMoneyNumber(s.remuneration));
+  setBox(doc,"Zone de texte 2",10,cautionMoneyNumber(s.autresRevenus));
+  setBox(doc,"Zone de texte 2",11,totalRevenus?cautionMoneyNumber(totalRevenus):"");
+
+  const family=["Célibataire","Marié(e)","Pacsé(e)","Divorcé(e)","Veuf(ve)"];
+  setChoice(doc,"Célibataire",Math.max(0,family.indexOf(s.situation)),5);
+  setChoice(doc,"Contrat de travail à durée",s.contratType==="determinee"?1:0,2);
+
+  setBox(doc,"Zone de texte 2",12,bailNames);
+  setBox(doc,"Zone de texte 2",13,bailAddresses);
+  setBox(doc,"Zone de texte 2",14,locNames);
+  setBox(doc,"Zone de texte 2",15,data.localisation);
+  setBox(doc,"Zone de texte 2",16,cautionDateFr(s.dateBail));
+  setBox(doc,"Zone de texte 2",17,cautionDateFr(data.dateEffet));
+  setBox(doc,"Zone de texte 2",18,data.duree);
+  setBox(doc,"Zone de texte 2",19,s.irlValeur);
+  setBox(doc,"Zone de texte 2",20,s.irlAnnee);
+  setBox(doc,"Zone de texte 2",21,identite);
+  setBox(doc,"Zone de texte 2",22,locNames);
+
+  setTableCell(doc,0,1,1,loyerN?loyerN+" €":"");
+  setTableCell(doc,0,1,2,cautionMoneyLetters(data.loyer));
+  setTableCell(doc,0,2,1,chargesN?chargesN+" €":"");
+  setTableCell(doc,0,2,2,cautionMoneyLetters(data.chargesMontant));
+  setTableCell(doc,0,3,1,depotN?depotN+" €":"");
+  setTableCell(doc,0,3,2,cautionMoneyLetters(data.depotGarantie));
+
+  const q=Math.max(1,Math.min(4,Number(s.irlTrimestre)||1));
+  setChoice(doc,"trimestre de l’année",q-1,4);
+
+  setBox(doc,"Zone de texte 2",23,cautionMoneyLetters(data.loyer));
+  setBox(doc,"Zone de texte 2",24,loyerN?loyerN+" €":"");
+  setBox(doc,"Zone de texte 2",25,s.irlValeur);
+  setBox(doc,"Zone de texte 2",26,s.irlAnnee);
+  setBox(doc,"Zone de texte 2",27,s.irlTrimestre?String(s.irlTrimestre):"");
+  setBox(doc,"Zone de texte 2",28,cautionMoneyLetters(data.chargesMontant));
+  setBox(doc,"Zone de texte 2",29,chargesN?chargesN+" €":"");
+  setBox(doc,"Zone de texte 2",30,cautionMoneyLetters(data.depotGarantie));
+  setBox(doc,"Zone de texte 2",31,depotN?depotN+" €":"");
+  setBox(doc,"Zone de texte 2",32,data.duree);
+  setBox(doc,"Zone de texte 2",33,cautionDateFr(data.dateEffet));
+  setBox(doc,"Zone de texte 2",34,locNames);
+  setBox(doc,"Zone de texte 2",35,s.reconductions);
+  setBox(doc,"Zone de texte 2",36,s.dureeMax);
+
+  const maxN=cautionMoneyNumber(s.montantMax);
+  const maxText=s.montantMax?[cautionMoneyLetters(s.montantMax),maxN?maxN+" €":""].filter(Boolean).join(" — "):"";
+  setBox(doc,"Zone de texte 2",40,maxText);
+  setBox(doc,"Zone de texte 2",41,s.anneesLoyers);
+
+  xf.data=te.encode(new XMLSerializer().serializeToString(doc));
+  return new Blob([zip(files)],{type:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
+}
