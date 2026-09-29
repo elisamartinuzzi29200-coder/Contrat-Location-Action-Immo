@@ -636,6 +636,18 @@ function cautionMoneyLetters(v){
   if(cents)s+=" et "+numberToFrench(cents)+" centime"+(cents>1?"s":"");
   return s;
 }
+function setColocationCautionBox(doc,index,value){
+  const boxes=[...doc.getElementsByTagNameNS(WP,"docPr")].filter(x=>x.getAttribute("name")==="Zone de texte 2");
+  const first=boxes[0];
+  let offset=0;
+  if(first){
+    let a=first.parentElement;while(a&&a.localName!=="anchor")a=a.parentElement;
+    const txt=a?[...a.getElementsByTagNameNS(W,"t")].map(t=>t.textContent||"").join(" "):"";
+    if(/AGENCE ACTION IMMOBILIERE|TRIMAEN|QUIMPER/i.test(txt))offset=1;
+  }
+  setBox(doc,"Zone de texte 2",index+offset,value);
+}
+
 async function buildCaution(templateBytes,data){
   const files=await unzip(templateBytes),xf=files.find(f=>f.name==="word/document.xml");
   if(!xf)throw Error("Modèle d'acte de caution incomplet");
@@ -652,30 +664,32 @@ async function buildCaution(templateBytes,data){
 
   const isColocation=s.mode==="colocation";
   if(isColocation){
-    // Les actes de colocation ont leur propre ordre de zones Word.
-    setBox(doc,"Zone de texte 2",0,s.nom);
-    setBox(doc,"Zone de texte 2",1,s.prenoms);
-    setBox(doc,"Zone de texte 2",2,birth);
-    setBox(doc,"Zone de texte 2",3,s.domicile);
-    setBox(doc,"Zone de texte 2",4,s.email);
-    setBox(doc,"Zone de texte 2",5,s.tel);
-    setBox(doc,"Zone de texte 2",7,s.profession);
-    setBox(doc,"Zone de texte 2",8,s.employeur);
-    setBox(doc,"Zone de texte 2",9,s.contratType==="determinee"?cautionDateFr(s.contratFin):"");
-    setBox(doc,"Zone de texte 2",10,s.remuneration?cautionMoneyNumber(s.remuneration)+" €":"");
-    setBox(doc,"Zone de texte 2",11,s.autresRevenus?cautionMoneyNumber(s.autresRevenus)+" €":"");
+    // Mapping exact vérifié sur les deux modèles de colocation (Brest et Quimper).
+    // Le modèle Quimper contient une zone de texte d'agence supplémentaire : setColocationCautionBox gère ce décalage.
+    setColocationCautionBox(doc,0,s.nom);
+    setColocationCautionBox(doc,1,s.prenoms);
+    setColocationCautionBox(doc,2,birth);
+    setColocationCautionBox(doc,3,s.domicile);
+    setColocationCautionBox(doc,4,s.email);
+    setColocationCautionBox(doc,5,s.tel);
+    setColocationCautionBox(doc,6,s.profession);
+    setColocationCautionBox(doc,7,s.employeur);
+    setColocationCautionBox(doc,8,s.contratType==="determinee"?cautionDateFr(s.contratFin):"");
+    setColocationCautionBox(doc,9,s.remuneration?cautionMoneyNumber(s.remuneration)+" €":"");
+    setColocationCautionBox(doc,10,s.autresRevenus?cautionMoneyNumber(s.autresRevenus)+" €":"");
+    setColocationCautionBox(doc,11,totalRevenus?cautionMoneyNumber(totalRevenus)+" €":"");
 
     const family=["Célibataire","Marié(e)","Pacsé(e)","Divorcé(e)","Veuf(ve)"];
     setChoice(doc,"Célibataire",Math.max(0,family.indexOf(s.situation)),5);
     setChoice(doc,"Contrat de travail à durée",s.contratType==="determinee"?1:0,2);
 
-    setBox(doc,"Zone de texte 2",12,bailNames);
-    setBox(doc,"Zone de texte 2",13,bailAddresses);
-    setBox(doc,"Zone de texte 2",14,locNames);
-    setBox(doc,"Zone de texte 2",15,data.localisation);
-    setBox(doc,"Zone de texte 2",16,cautionDateFr(s.dateBail));
-    setBox(doc,"Zone de texte 2",17,cautionDateFr(data.dateEffet));
-    setBox(doc,"Zone de texte 2",18,data.duree);
+    setColocationCautionBox(doc,12,bailNames);
+    setColocationCautionBox(doc,13,bailAddresses);
+    setColocationCautionBox(doc,14,locNames);
+    setColocationCautionBox(doc,15,data.localisation);
+    setColocationCautionBox(doc,16,cautionDateFr(s.dateBail));
+    setColocationCautionBox(doc,17,cautionDateFr(data.dateEffet));
+    setColocationCautionBox(doc,18,data.duree);
 
     setTableCell(doc,0,1,1,loyerN?loyerN+" €":"");
     setTableCell(doc,0,1,2,cautionMoneyLetters(data.loyer));
@@ -686,30 +700,36 @@ async function buildCaution(templateBytes,data){
 
     const q=Math.max(1,Math.min(4,Number(data.irlTrimestre||s.irlTrimestre)||1));
     setChoice(doc,"trimestre de l’année",q-1,4);
-    setBox(doc,"Zone de texte 2",19,data.irlAnnee||s.irlAnnee);
-    setBox(doc,"Zone de texte 2",20,data.irlValeur||s.irlValeur);
-    setBox(doc,"Zone de texte 2",21,identite);
-    setBox(doc,"Zone de texte 2",22,locNames);
+    setColocationCautionBox(doc,19,data.irlValeur||s.irlValeur);
+    setColocationCautionBox(doc,20,data.irlAnnee||s.irlAnnee);
+    setColocationCautionBox(doc,21,identite);
+    setColocationCautionBox(doc,22,locNames);
 
-    setBox(doc,"Zone de texte 2",23,cautionMoneyLetters(data.loyer));
-    setBox(doc,"Zone de texte 2",24,loyerN?loyerN+" €":"");
-    setBox(doc,"Zone de texte 2",25,String(data.irlTrimestre||s.irlTrimestre||""));
-    setBox(doc,"Zone de texte 2",26,data.irlAnnee||s.irlAnnee);
-    setBox(doc,"Zone de texte 2",27,data.irlValeur||s.irlValeur);
-    setBox(doc,"Zone de texte 2",28,cautionMoneyLetters(data.chargesMontant));
-    setBox(doc,"Zone de texte 2",29,chargesN?chargesN+" €":"");
-    setBox(doc,"Zone de texte 2",30,cautionMoneyLetters(data.depotGarantie));
-    setBox(doc,"Zone de texte 2",31,depotN?depotN+" €":"");
-    setBox(doc,"Zone de texte 2",32,data.duree);
-    setBox(doc,"Zone de texte 2",33,cautionDateFr(data.dateEffet));
-    setBox(doc,"Zone de texte 2",34,locNames);
-    setBox(doc,"Zone de texte 2",35,s.reconductions);
-    setBox(doc,"Zone de texte 2",36,s.dureeMax);
+    setColocationCautionBox(doc,23,cautionMoneyLetters(data.loyer));
+    setColocationCautionBox(doc,24,loyerN?loyerN+" €":"");
+    setColocationCautionBox(doc,25,data.irlValeur||s.irlValeur);
+    setColocationCautionBox(doc,26,data.irlAnnee||s.irlAnnee);
+    setColocationCautionBox(doc,27,String(data.irlTrimestre||s.irlTrimestre||""));
+    setColocationCautionBox(doc,28,cautionMoneyLetters(data.chargesMontant));
+    setColocationCautionBox(doc,29,chargesN?chargesN+" €":"");
+    setColocationCautionBox(doc,30,cautionMoneyLetters(data.depotGarantie));
+    setColocationCautionBox(doc,31,depotN?depotN+" €":"");
+    setColocationCautionBox(doc,32,data.duree);
+    setColocationCautionBox(doc,33,cautionDateFr(data.dateEffet));
+    setColocationCautionBox(doc,34,locNames);
+    setColocationCautionBox(doc,35,s.reconductions);
+    setColocationCautionBox(doc,36,s.dureeMax);
+
+    // Les cases 37 et 38 concernent le colocataire dont le congé met fin à la caution.
+    // À défaut d'un choix spécifique, on reprend le premier locataire du bail.
+    const colocataireGaranti=(data.locataires&&data.locataires.length)?partyName(data.locataires[0]):locNames;
+    setColocationCautionBox(doc,37,colocataireGaranti);
+    setColocationCautionBox(doc,38,colocataireGaranti);
 
     const monthlyTotal=num(data.loyer)+num(data.chargesMontant),months=data.type==="meuble"?12:36,maxAmount=monthlyTotal*months,maxN=cautionMoneyNumber(maxAmount);
     const maxText=maxAmount?(maxN+" € ("+cautionMoneyLetters(maxAmount)+")"):"";
-    setBox(doc,"Zone de texte 2",42,maxText);
-    setBox(doc,"Zone de texte 2",44,data.type==="meuble"?"1":"3");
+    setColocationCautionBox(doc,42,maxText);
+    setColocationCautionBox(doc,43,data.type==="meuble"?"1":"3");
   }else{
     setBox(doc,"Zone de texte 2",0,s.nom);
     setBox(doc,"Zone de texte 2",1,s.prenoms);
