@@ -4,7 +4,8 @@ const baseModels={nu_gestion:"Location nue — gestion",nu_hors:"Location nue �
 const agencies={brest:"Brest",quimper:"Quimper"};
 const models=Object.fromEntries(Object.entries(agencies).flatMap(([agency,agencyLabel])=>Object.entries(baseModels).map(([key,label])=>[agency+"_"+key,{label:agencyLabel+" — "+label}])));
 const modelKey=d=>(d.agence||"brest")+"_"+d.type+"_"+d.gestion;
-const extraModels={caution:{label:"Acte de cautionnement"}};
+const extraModels={caution_brest:{label:"Brest — Acte de cautionnement"},caution_quimper:{label:"Quimper — Acte de cautionnement"}};
+const cautionModelKey=d=>"caution_"+(d.agence||"brest");
 const blankBailleur=()=>({type:"physique",nom:"",prenoms:"",denomination:"",adresse:"",email:"",tel:""});
 const blankLoc=()=>({nom:"",prenoms:"",naissance:"",lieuNaissance:"",email:"",tel:""});
 const initial=()=>({agence:"brest",type:"nu",gestion:"gestion",bailleurs:[blankBailleur()],locataires:[blankLoc()],localisation:"",habitat:"collectif",identifiantFiscal:"",regime:"copropriete",periode:"depuis2005",surface:"",pieces:"",caracteristiques:"",autresParties:"",autresPartiesChoix:{},autresPartiesAutre:"",equipements:"",equipementsChoix:{},equipementsAutre:"",chauffageMode:"individuel",chauffageEnergie:"electricite",chauffageAutre:"",eauMode:"individuel",eauEnergie:"electricite",eauAutre:"",destination:"habitation",professionMixte:"",accessoiresPrivatifs:"",accessoiresPrivatifsChoix:{},accessoiresPrivatifsNumeros:{},accessoiresPrivatifsAutre:"",partiesCommunes:"",partiesCommunesChoix:{},partiesCommunesNumeros:{},partiesCommunesAutre:"",technologies:"",depensesEnergie:"",anneeEnergie:"",dateEffet:"",duree:"",raisonDureeReduite:"",loyer:"",decretRelocation:"non",encadrement:"non",loyerReference:"",loyerReferenceMajore:"",loyerBase:"",complementLoyer:"",dernierLoyer:"",dateVersementDernier:"",dateDerniereRevision:"",dateRevision:"",irl:"",irlTrimestre:"",irlAnnee:"",irlValeur:"",chargesMode:"provision",chargesMontant:"",contribution:"",justifContribution:"",assuranceColocAnnuelle:"",assuranceColocMensuelle:"",depotGarantie:"",honorairesVisiteBailleur:"",honorairesVisiteLocataire:"",honorairesEdlBailleur:"",honorairesEdlLocataire:"",travauxRecents:"",majorationTravaux:"",diminutionTravaux:"",sinistre:"non",congeLocataire:"",conditionsLocataire:"",conditionsBailleur:"",caution:"",cautionActe:{civilite:"Monsieur",nom:"",prenoms:"",naissance:"",lieuNaissance:"",domicile:"",email:"",tel:"",situation:"Célibataire",profession:"",employeur:"",contratType:"indeterminee",contratFin:"",remuneration:"",autresRevenus:"",dateBail:"",irlTrimestre:"",irlAnnee:"",irlValeur:"",reconductions:"",dureeMax:"",montantMax:"",anneesLoyers:""},annexes:{},avenantCharges:{},avenantInfos:{}});
@@ -281,12 +282,12 @@ async function generateCautionDocument(){
   try{
     if(viewMode==="dashboard"){alert("Ouvre d’abord un dossier.");return}
     ensureCaution();saveDossier();
-    const f=await getFile("caution");
-    if(!f){$("modelsModal").classList.remove("hidden");await renderTemplates();alert("Charge d’abord le modèle Word : Acte de cautionnement");return}
+    const key=cautionModelKey(data),f=await getFile(key);
+    if(!f){$("modelsModal").classList.remove("hidden");await renderTemplates();alert("Charge d’abord le modèle Word : "+extraModels[key].label);return}
     const bytes=f.bytes instanceof Uint8Array?f.bytes:new Uint8Array(f.bytes),blob=await buildCaution(bytes,data),a=document.createElement("a");
     a.href=URL.createObjectURL(blob);
     const n=(data.cautionActe.nom||"CAUTION").replace(/[^A-Za-zÀ-ÿ0-9]+/g,"_").replace(/^_+|_+$/g,"");
-    a.download="ACTE_DE_CAUTION_"+n+".docx";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    a.download="ACTE_DE_CAUTION_"+(data.agence||"brest").toUpperCase()+"_"+n+".docx";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   }catch(e){alert("Impossible de générer l'acte de caution : "+e.message)}
 }
 $("saveBtn").onclick=()=>{if(viewMode==="dashboard")return;saveDossier()};$("dashboardBtn").onclick=()=>{cautionView=false;viewMode="dashboard";renderDashboard()};$("cautionTopBtn").onclick=()=>{if(viewMode==="dashboard"){alert("Ouvre d’abord un dossier.");return}cautionView=true;render()};$("newBtn").onclick=newDossier;
