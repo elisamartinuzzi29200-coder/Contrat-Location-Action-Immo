@@ -650,65 +650,127 @@ async function buildCaution(templateBytes,data){
   const birth=[cautionDateFr(s.naissance),s.lieuNaissance].filter(Boolean).join(" à ");
   const loyerN=cautionMoneyNumber(data.loyer),chargesN=cautionMoneyNumber(data.chargesMontant),depotN=cautionMoneyNumber(data.depotGarantie);
 
-  setBox(doc,"Zone de texte 2",0,s.nom);
-  setBox(doc,"Zone de texte 2",1,s.prenoms);
-  setBox(doc,"Zone de texte 2",2,birth);
-  setBox(doc,"Zone de texte 2",3,s.domicile);
-  setBox(doc,"Zone de texte 2",4,s.email);
-  setBox(doc,"Zone de texte 2",5,s.tel);
-  setBox(doc,"Zone de texte 2",6,s.profession);
-  setBox(doc,"Zone de texte 2",7,s.employeur);
-  setBox(doc,"Zone de texte 2",8,s.contratType==="determinee"?cautionDateFr(s.contratFin):"");
-  setBox(doc,"Zone de texte 2",9,s.remuneration?cautionMoneyNumber(s.remuneration)+" €":"");
-  setBox(doc,"Zone de texte 2",10,s.autresRevenus?cautionMoneyNumber(s.autresRevenus)+" €":"");
-  setBox(doc,"Zone de texte 2",11,totalRevenus?cautionMoneyNumber(totalRevenus)+" €":"");
+  const isColocation=s.mode==="colocation";
+  if(isColocation){
+    // Les actes de colocation ont leur propre ordre de zones Word.
+    setBox(doc,"Zone de texte 2",0,s.nom);
+    setBox(doc,"Zone de texte 2",1,s.prenoms);
+    setBox(doc,"Zone de texte 2",2,birth);
+    setBox(doc,"Zone de texte 2",3,s.domicile);
+    setBox(doc,"Zone de texte 2",4,s.email);
+    setBox(doc,"Zone de texte 2",5,s.tel);
+    setBox(doc,"Zone de texte 2",7,s.profession);
+    setBox(doc,"Zone de texte 2",8,s.employeur);
+    setBox(doc,"Zone de texte 2",9,s.contratType==="determinee"?cautionDateFr(s.contratFin):"");
+    setBox(doc,"Zone de texte 2",10,s.remuneration?cautionMoneyNumber(s.remuneration)+" €":"");
+    setBox(doc,"Zone de texte 2",11,s.autresRevenus?cautionMoneyNumber(s.autresRevenus)+" €":"");
 
-  const family=["Célibataire","Marié(e)","Pacsé(e)","Divorcé(e)","Veuf(ve)"];
-  setChoice(doc,"Célibataire",Math.max(0,family.indexOf(s.situation)),5);
-  setChoice(doc,"Contrat de travail à durée",s.contratType==="determinee"?1:0,2);
+    const family=["Célibataire","Marié(e)","Pacsé(e)","Divorcé(e)","Veuf(ve)"];
+    setChoice(doc,"Célibataire",Math.max(0,family.indexOf(s.situation)),5);
+    setChoice(doc,"Contrat de travail à durée",s.contratType==="determinee"?1:0,2);
 
-  setBox(doc,"Zone de texte 2",12,bailNames);
-  setBox(doc,"Zone de texte 2",13,bailAddresses);
-  setBox(doc,"Zone de texte 2",14,locNames);
-  setBox(doc,"Zone de texte 2",15,data.localisation);
-  setBox(doc,"Zone de texte 2",16,cautionDateFr(s.dateBail));
-  setBox(doc,"Zone de texte 2",17,cautionDateFr(data.dateEffet));
-  setBox(doc,"Zone de texte 2",18,data.duree);
-  setBox(doc,"Zone de texte 2",19,data.irlValeur||s.irlValeur);
-  setBox(doc,"Zone de texte 2",20,data.irlAnnee||s.irlAnnee);
-  setBox(doc,"Zone de texte 2",21,identite);
-  setBox(doc,"Zone de texte 2",22,locNames);
+    setBox(doc,"Zone de texte 2",12,bailNames);
+    setBox(doc,"Zone de texte 2",13,bailAddresses);
+    setBox(doc,"Zone de texte 2",14,locNames);
+    setBox(doc,"Zone de texte 2",15,data.localisation);
+    setBox(doc,"Zone de texte 2",16,cautionDateFr(s.dateBail));
+    setBox(doc,"Zone de texte 2",17,cautionDateFr(data.dateEffet));
+    setBox(doc,"Zone de texte 2",18,data.duree);
 
-  setTableCell(doc,0,1,1,loyerN?loyerN+" €":"");
-  setTableCell(doc,0,1,2,cautionMoneyLetters(data.loyer));
-  setTableCell(doc,0,2,1,chargesN?chargesN+" €":"");
-  setTableCell(doc,0,2,2,cautionMoneyLetters(data.chargesMontant));
-  setTableCell(doc,0,3,1,depotN?depotN+" €":"");
-  setTableCell(doc,0,3,2,cautionMoneyLetters(data.depotGarantie));
+    setTableCell(doc,0,1,1,loyerN?loyerN+" €":"");
+    setTableCell(doc,0,1,2,cautionMoneyLetters(data.loyer));
+    setTableCell(doc,0,2,1,chargesN?chargesN+" €":"");
+    setTableCell(doc,0,2,2,cautionMoneyLetters(data.chargesMontant));
+    setTableCell(doc,0,3,1,depotN?depotN+" €":"");
+    setTableCell(doc,0,3,2,cautionMoneyLetters(data.depotGarantie));
 
-  const q=Math.max(1,Math.min(4,Number(data.irlTrimestre||s.irlTrimestre)||1));
-  setChoice(doc,"trimestre de l’année",q-1,4);
+    const q=Math.max(1,Math.min(4,Number(data.irlTrimestre||s.irlTrimestre)||1));
+    setChoice(doc,"trimestre de l’année",q-1,4);
+    setBox(doc,"Zone de texte 2",19,data.irlAnnee||s.irlAnnee);
+    setBox(doc,"Zone de texte 2",20,data.irlValeur||s.irlValeur);
+    setBox(doc,"Zone de texte 2",21,identite);
+    setBox(doc,"Zone de texte 2",22,locNames);
 
-  setBox(doc,"Zone de texte 2",23,cautionMoneyLetters(data.loyer));
-  setBox(doc,"Zone de texte 2",24,loyerN?loyerN+" €":"");
-  setBox(doc,"Zone de texte 2",25,data.irlValeur||s.irlValeur);
-  setBox(doc,"Zone de texte 2",26,data.irlAnnee||s.irlAnnee);
-  setBox(doc,"Zone de texte 2",27,String(data.irlTrimestre||s.irlTrimestre||""));
-  setBox(doc,"Zone de texte 2",28,cautionMoneyLetters(data.chargesMontant));
-  setBox(doc,"Zone de texte 2",29,chargesN?chargesN+" €":"");
-  setBox(doc,"Zone de texte 2",30,cautionMoneyLetters(data.depotGarantie));
-  setBox(doc,"Zone de texte 2",31,depotN?depotN+" €":"");
-  setBox(doc,"Zone de texte 2",32,data.duree);
-  setBox(doc,"Zone de texte 2",33,cautionDateFr(data.dateEffet));
-  setBox(doc,"Zone de texte 2",34,locNames);
-  setBox(doc,"Zone de texte 2",35,s.reconductions);
-  setBox(doc,"Zone de texte 2",36,s.dureeMax);
+    setBox(doc,"Zone de texte 2",23,cautionMoneyLetters(data.loyer));
+    setBox(doc,"Zone de texte 2",24,loyerN?loyerN+" €":"");
+    setBox(doc,"Zone de texte 2",25,String(data.irlTrimestre||s.irlTrimestre||""));
+    setBox(doc,"Zone de texte 2",26,data.irlAnnee||s.irlAnnee);
+    setBox(doc,"Zone de texte 2",27,data.irlValeur||s.irlValeur);
+    setBox(doc,"Zone de texte 2",28,cautionMoneyLetters(data.chargesMontant));
+    setBox(doc,"Zone de texte 2",29,chargesN?chargesN+" €":"");
+    setBox(doc,"Zone de texte 2",30,cautionMoneyLetters(data.depotGarantie));
+    setBox(doc,"Zone de texte 2",31,depotN?depotN+" €":"");
+    setBox(doc,"Zone de texte 2",32,data.duree);
+    setBox(doc,"Zone de texte 2",33,cautionDateFr(data.dateEffet));
+    setBox(doc,"Zone de texte 2",34,locNames);
+    setBox(doc,"Zone de texte 2",35,s.reconductions);
+    setBox(doc,"Zone de texte 2",36,s.dureeMax);
 
-  const monthlyTotal=num(data.loyer)+num(data.chargesMontant),months=data.type==="meuble"?12:36,maxAmount=monthlyTotal*months,maxN=cautionMoneyNumber(maxAmount);
-  const maxText=maxAmount?(maxN+" € ("+cautionMoneyLetters(maxAmount)+")"):"";
-  setBox(doc,"Zone de texte 2",40,maxText);
-  setBox(doc,"Zone de texte 2",41,data.type==="meuble"?"1":"3");
-
+    const monthlyTotal=num(data.loyer)+num(data.chargesMontant),months=data.type==="meuble"?12:36,maxAmount=monthlyTotal*months,maxN=cautionMoneyNumber(maxAmount);
+    const maxText=maxAmount?(maxN+" € ("+cautionMoneyLetters(maxAmount)+")"):"";
+    setBox(doc,"Zone de texte 2",42,maxText);
+    setBox(doc,"Zone de texte 2",44,data.type==="meuble"?"1":"3");
+  }else{
+    setBox(doc,"Zone de texte 2",0,s.nom);
+    setBox(doc,"Zone de texte 2",1,s.prenoms);
+    setBox(doc,"Zone de texte 2",2,birth);
+    setBox(doc,"Zone de texte 2",3,s.domicile);
+    setBox(doc,"Zone de texte 2",4,s.email);
+    setBox(doc,"Zone de texte 2",5,s.tel);
+    setBox(doc,"Zone de texte 2",6,s.profession);
+    setBox(doc,"Zone de texte 2",7,s.employeur);
+    setBox(doc,"Zone de texte 2",8,s.contratType==="determinee"?cautionDateFr(s.contratFin):"");
+    setBox(doc,"Zone de texte 2",9,s.remuneration?cautionMoneyNumber(s.remuneration)+" €":"");
+    setBox(doc,"Zone de texte 2",10,s.autresRevenus?cautionMoneyNumber(s.autresRevenus)+" €":"");
+    setBox(doc,"Zone de texte 2",11,totalRevenus?cautionMoneyNumber(totalRevenus)+" €":"");
+  
+    const family=["Célibataire","Marié(e)","Pacsé(e)","Divorcé(e)","Veuf(ve)"];
+    setChoice(doc,"Célibataire",Math.max(0,family.indexOf(s.situation)),5);
+    setChoice(doc,"Contrat de travail à durée",s.contratType==="determinee"?1:0,2);
+  
+    setBox(doc,"Zone de texte 2",12,bailNames);
+    setBox(doc,"Zone de texte 2",13,bailAddresses);
+    setBox(doc,"Zone de texte 2",14,locNames);
+    setBox(doc,"Zone de texte 2",15,data.localisation);
+    setBox(doc,"Zone de texte 2",16,cautionDateFr(s.dateBail));
+    setBox(doc,"Zone de texte 2",17,cautionDateFr(data.dateEffet));
+    setBox(doc,"Zone de texte 2",18,data.duree);
+    setBox(doc,"Zone de texte 2",19,data.irlValeur||s.irlValeur);
+    setBox(doc,"Zone de texte 2",20,data.irlAnnee||s.irlAnnee);
+    setBox(doc,"Zone de texte 2",21,identite);
+    setBox(doc,"Zone de texte 2",22,locNames);
+  
+    setTableCell(doc,0,1,1,loyerN?loyerN+" €":"");
+    setTableCell(doc,0,1,2,cautionMoneyLetters(data.loyer));
+    setTableCell(doc,0,2,1,chargesN?chargesN+" €":"");
+    setTableCell(doc,0,2,2,cautionMoneyLetters(data.chargesMontant));
+    setTableCell(doc,0,3,1,depotN?depotN+" €":"");
+    setTableCell(doc,0,3,2,cautionMoneyLetters(data.depotGarantie));
+  
+    const q=Math.max(1,Math.min(4,Number(data.irlTrimestre||s.irlTrimestre)||1));
+    setChoice(doc,"trimestre de l’année",q-1,4);
+  
+    setBox(doc,"Zone de texte 2",23,cautionMoneyLetters(data.loyer));
+    setBox(doc,"Zone de texte 2",24,loyerN?loyerN+" €":"");
+    setBox(doc,"Zone de texte 2",25,data.irlValeur||s.irlValeur);
+    setBox(doc,"Zone de texte 2",26,data.irlAnnee||s.irlAnnee);
+    setBox(doc,"Zone de texte 2",27,String(data.irlTrimestre||s.irlTrimestre||""));
+    setBox(doc,"Zone de texte 2",28,cautionMoneyLetters(data.chargesMontant));
+    setBox(doc,"Zone de texte 2",29,chargesN?chargesN+" €":"");
+    setBox(doc,"Zone de texte 2",30,cautionMoneyLetters(data.depotGarantie));
+    setBox(doc,"Zone de texte 2",31,depotN?depotN+" €":"");
+    setBox(doc,"Zone de texte 2",32,data.duree);
+    setBox(doc,"Zone de texte 2",33,cautionDateFr(data.dateEffet));
+    setBox(doc,"Zone de texte 2",34,locNames);
+    setBox(doc,"Zone de texte 2",35,s.reconductions);
+    setBox(doc,"Zone de texte 2",36,s.dureeMax);
+  
+    const monthlyTotal=num(data.loyer)+num(data.chargesMontant),months=data.type==="meuble"?12:36,maxAmount=monthlyTotal*months,maxN=cautionMoneyNumber(maxAmount);
+    const maxText=maxAmount?(maxN+" € ("+cautionMoneyLetters(maxAmount)+")"):"";
+    setBox(doc,"Zone de texte 2",40,maxText);
+    setBox(doc,"Zone de texte 2",41,data.type==="meuble"?"1":"3");
+  
+    }
   xf.data=te.encode(new XMLSerializer().serializeToString(doc));
   return new Blob([zip(files)],{type:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
 }
