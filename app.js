@@ -315,19 +315,28 @@ $("existingLeaseInput").onchange=async()=>{
     alert("Impossible de récupérer les informations de ce bail : "+e.message+"\n\nTu peux utiliser un bail Word .docx ou un PDF. Pour un PDF scanné, la lecture peut prendre un peu plus de temps.");
   }
 };
+function downloadGeneratedDoc(blob,filename){
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download=filename;a.style.display="none";document.body.appendChild(a);a.click();a.remove();
+  $("status").textContent="✓ Document généré";
+  let box=document.getElementById("generatedDownload");
+  if(!box){box=document.createElement("div");box.id="generatedDownload";box.className="notice";box.style.marginTop="16px";$("content").prepend(box)}
+  box.innerHTML='<strong>Document prêt.</strong> Si le téléchargement ne démarre pas automatiquement, <a id="generatedDownloadLink" href="'+url+'" download="'+filename+'">clique ici pour télécharger le Word</a>.';
+  setTimeout(()=>{if(document.getElementById("generatedDownloadLink"))return;URL.revokeObjectURL(url)},60000);
+}
 async function generateCautionDocument(){
   try{
     if(viewMode==="dashboard"){alert("Ouvre d’abord un dossier.");return}
     ensureCaution();saveDossier();
     const key=cautionModelKey(data),f=await getFile(key);
     if(!f){$("modelsModal").classList.remove("hidden");await renderTemplates();alert("Charge d’abord le modèle Word : "+extraModels[key].label);return}
-    const bytes=f.bytes instanceof Uint8Array?f.bytes:new Uint8Array(f.bytes),blob=await buildCaution(bytes,data),a=document.createElement("a");
-    a.href=URL.createObjectURL(blob);
+    $("status").textContent="Génération de l'acte…";
+    const bytes=f.bytes instanceof Uint8Array?f.bytes:new Uint8Array(f.bytes),blob=await buildCaution(bytes,data);
     const n=(data.cautionActe.nom||"CAUTION").replace(/[^A-Za-zÀ-ÿ0-9]+/g,"_").replace(/^_+|_+$/g,"");
-    a.download="ACTE_DE_CAUTION_"+(data.agence||"brest").toUpperCase()+"_"+(((data.cautionActe||{}).mode||"location").toUpperCase())+"_"+n+".docx";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    downloadGeneratedDoc(blob,"ACTE_DE_CAUTION_"+(data.agence||"brest").toUpperCase()+"_"+(((data.cautionActe||{}).mode||"location").toUpperCase())+"_"+n+".docx");
   }catch(e){alert("Impossible de générer l'acte de caution : "+e.message)}
 }
 $("saveBtn").onclick=()=>{if(viewMode==="dashboard")return;clearTimeout(autosaveTimer);saveDossier("✓ Dossier sauvegardé")};$("dashboardBtn").onclick=()=>{cautionView=false;viewMode="dashboard";renderDashboard()};$("cautionTopBtn").onclick=()=>{if(viewMode==="dashboard"){alert("Ouvre d’abord un dossier.");return}cautionView=true;render()};$("newBtn").onclick=newDossier;
-$("generateBtn").onclick=async()=>{try{if(viewMode==="dashboard"){alert("Ouvre d’abord un dossier.");return}if(cautionView){await generateCautionDocument();return}const blocking=dossierChecks().filter(x=>x.level==="error");if(blocking.length&&!confirm("Le contrôle du dossier signale "+blocking.length+" point(s) bloquant(s).\n\nGénérer quand même le contrat ?"))return;const key=modelKey(data),f=await getFile(key);if(!f){$("modelsModal").classList.remove("hidden");await renderTemplates();alert("Charge d’abord le modèle Word : "+models[key].label);return}saveDossier();const bytes=f.bytes instanceof Uint8Array?f.bytes:new Uint8Array(f.bytes),blob=await buildLocation(bytes,data),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="CONTRAT_LOCATION_"+(data.agence||"brest").toUpperCase()+"_"+data.type.toUpperCase()+"_"+(data.gestion==="gestion"?"GESTION":"HORS_GESTION")+"_REMPLI.docx";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}catch(e){alert("Impossible de générer le Word : "+e.message)}};
+$("generateBtn").onclick=async()=>{try{if(viewMode==="dashboard"){alert("Ouvre d’abord un dossier.");return}if(cautionView){await generateCautionDocument();return}const blocking=dossierChecks().filter(x=>x.level==="error");if(blocking.length&&!confirm("Le contrôle du dossier signale "+blocking.length+" point(s) bloquant(s).\n\nGénérer quand même le contrat ?"))return;const key=modelKey(data),f=await getFile(key);if(!f){$("modelsModal").classList.remove("hidden");await renderTemplates();alert("Charge d’abord le modèle Word : "+models[key].label);return}saveDossier();$("status").textContent="Génération du contrat…";const bytes=f.bytes instanceof Uint8Array?f.bytes:new Uint8Array(f.bytes),blob=await buildLocation(bytes,data);downloadGeneratedDoc(blob,"CONTRAT_LOCATION_"+(data.agence||"brest").toUpperCase()+"_"+data.type.toUpperCase()+"_"+(data.gestion==="gestion"?"GESTION":"HORS_GESTION")+"_REMPLI.docx")}catch(e){alert("Impossible de générer le Word : "+e.message)}};
 $("prev").onclick=()=>{if(step>0){step--;render()}};$("next").onclick=()=>{if(step<sections.length-1){step++;render()}};
 renderDashboard();
