@@ -14,7 +14,7 @@ const cautionModelKey=d=>"caution_"+(d.agence||"brest")+"_"+((d.cautionActe||{})
 const blankBailleur=()=>({type:"physique",nom:"",prenoms:"",denomination:"",adresse:"",email:"",tel:""});
 const blankLoc=()=>({nom:"",prenoms:"",naissance:"",lieuNaissance:"",email:"",tel:""});
 const initial=()=>({agence:"brest",type:"nu",gestion:"gestion",bailleurs:[blankBailleur()],locataires:[blankLoc()],localisation:"",habitat:"collectif",identifiantFiscal:"",regime:"copropriete",periode:"depuis2005",surface:"",pieces:"",caracteristiques:"",autresParties:"",autresPartiesChoix:{},autresPartiesAutre:"",equipements:"",equipementsChoix:{},equipementsAutre:"",chauffageMode:"individuel",chauffageEnergie:"electricite",chauffageAutre:"",eauMode:"individuel",eauEnergie:"electricite",eauAutre:"",destination:"habitation",professionMixte:"",accessoiresPrivatifs:"",accessoiresPrivatifsChoix:{},accessoiresPrivatifsNumeros:{},accessoiresPrivatifsAutre:"",partiesCommunes:"",partiesCommunesChoix:{},partiesCommunesNumeros:{},partiesCommunesAutre:"",technologies:"",depensesEnergie:"",anneeEnergie:"",dateEffet:"",duree:"",raisonDureeReduite:"",loyer:"",decretRelocation:"non",encadrement:"non",loyerReference:"",loyerReferenceMajore:"",loyerBase:"",complementLoyer:"",dernierLoyer:"",dateVersementDernier:"",dateDerniereRevision:"",dateRevision:"",irl:"",irlTrimestre:"",irlAnnee:"",irlValeur:"",chargesMode:"provision",chargesMontant:"",contribution:"",justifContribution:"",assuranceColocAnnuelle:"",assuranceColocMensuelle:"",depotGarantie:"",honorairesVisiteBailleur:"",honorairesVisiteLocataire:"",honorairesEdlBailleur:"",honorairesEdlLocataire:"",travauxRecents:"",majorationTravaux:"",diminutionTravaux:"",sinistre:"non",congeLocataire:"",conditionsLocataire:"",conditionsBailleur:"",caution:"",cautionActe:{mode:"location",civilite:"Monsieur",nom:"",prenoms:"",naissance:"",lieuNaissance:"",domicile:"",email:"",tel:"",situation:"Célibataire",profession:"",employeur:"",contratType:"indeterminee",contratFin:"",remuneration:"",autresRevenus:"",dateBail:"",irlTrimestre:"",irlAnnee:"",irlValeur:"",reconductions:"",dureeMax:"",montantMax:"",anneesLoyers:""},annexes:{},avenantCharges:{},avenantInfos:{}});
-let data=initial(),autosaveTimer=null;
+let data=initial(),autosaveTimer=null,lastGeneratedBlob=null,lastGeneratedFilename="";
 function loadDossiers(){try{return JSON.parse(localStorage.getItem("ai-location-dossiers")||"[]")}catch{return []}}
 function storeDossiers(list){localStorage.setItem("ai-location-dossiers",JSON.stringify(list))}
 function dossierTitle(d){
@@ -316,20 +316,50 @@ $("existingLeaseInput").onchange=async()=>{
   }
 };
 function downloadGeneratedDoc(blob,filename){
-  const url=URL.createObjectURL(blob);
-  const trigger=()=>{
-    const a=document.createElement("a");
-    a.href=url;a.download=filename;a.target="_blank";a.rel="noopener";a.style.display="none";
-    document.body.appendChild(a);a.click();a.remove();
-  };
-  trigger();
-  $("status").textContent="✓ Document généré — téléchargement prêt";
+  lastGeneratedBlob=blob;lastGeneratedFilename=filename;
+  $("status").textContent="✓ Document généré — prêt à enregistrer";
   let box=document.getElementById("generatedDownload");
   if(!box){box=document.createElement("div");box.id="generatedDownload";box.className="notice";box.style.marginTop="16px";$("content").prepend(box)}
-  box.innerHTML='<strong>✓ Word généré.</strong><p>Si Chrome ne l\'a pas téléchargé automatiquement, utilise le bouton ci-dessous.</p><button type="button" class="primary bigAction" id="generatedDownloadBtn">Télécharger le Word</button><p class="hint">Si Chrome bloque encore le téléchargement, autorise les téléchargements pour ce site puis reclique sur ce bouton.</p>';
-  const btn=document.getElementById("generatedDownloadBtn");
-  if(btn)btn.onclick=()=>{trigger();$("status").textContent="Téléchargement du Word demandé"};
-  setTimeout(()=>URL.revokeObjectURL(url),10*60*1000);
+  box.innerHTML='<strong>✓ Word généré.</strong><p>Clique sur le bouton ci-dessous pour choisir où enregistrer le fichier sur ton ordinateur.</p><button type="button" class="primary bigAction" id="saveGeneratedWordBtn">Enregistrer le Word</button><button type="button" id="openGeneratedWordBtn" style="margin-left:8px">Ouvrir / télécharger autrement</button><p class="hint" id="generatedSaveHint"></p>';
+
+  const saveBtn=document.getElementById("saveGeneratedWordBtn");
+  const openBtn=document.getElementById("openGeneratedWordBtn");
+  const hint=document.getElementById("generatedSaveHint");
+
+  if(saveBtn)saveBtn.onclick=async()=>{
+    try{
+      if(window.showSaveFilePicker){
+        const handle=await window.showSaveFilePicker({
+          suggestedName:lastGeneratedFilename,
+          types:[{description:"Document Word",accept:{"application/vnd.openxmlformats-officedocument.wordprocessingml.document":[".docx"]}}]
+        });
+        const writable=await handle.createWritable();
+        await writable.write(lastGeneratedBlob);
+        await writable.close();
+        $("status").textContent="✓ Word enregistré";
+        if(hint)hint.textContent="Le fichier a bien été enregistré.";
+        return;
+      }
+      const url=URL.createObjectURL(lastGeneratedBlob);
+      window.location.href=url;
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+    }catch(e){
+      if(e&&e.name==="AbortError"){if(hint)hint.textContent="Enregistrement annulé.";return}
+      if(hint)hint.textContent="Impossible d'ouvrir la fenêtre d'enregistrement : "+e.message;
+    }
+  };
+
+  if(openBtn)openBtn.onclick=()=>{
+    try{
+      const url=URL.createObjectURL(lastGeneratedBlob);
+      const w=window.open(url,"_blank");
+      if(!w)window.location.href=url;
+      if(hint)hint.textContent="Si un nouvel onglet s'ouvre, utilise Ctrl+S pour enregistrer le fichier.";
+      setTimeout(()=>URL.revokeObjectURL(url),10*60*1000);
+    }catch(e){
+      if(hint)hint.textContent="Impossible d'ouvrir le fichier : "+e.message;
+    }
+  };
 }
 
 async function generateCautionDocument(){
