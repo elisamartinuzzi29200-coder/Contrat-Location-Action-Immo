@@ -316,14 +316,22 @@ $("existingLeaseInput").onchange=async()=>{
   }
 };
 function downloadGeneratedDoc(blob,filename){
-  const url=URL.createObjectURL(blob),a=document.createElement("a");
-  a.href=url;a.download=filename;a.style.display="none";document.body.appendChild(a);a.click();a.remove();
-  $("status").textContent="✓ Document généré";
+  const url=URL.createObjectURL(blob);
+  const trigger=()=>{
+    const a=document.createElement("a");
+    a.href=url;a.download=filename;a.target="_blank";a.rel="noopener";a.style.display="none";
+    document.body.appendChild(a);a.click();a.remove();
+  };
+  trigger();
+  $("status").textContent="✓ Document généré — téléchargement prêt";
   let box=document.getElementById("generatedDownload");
   if(!box){box=document.createElement("div");box.id="generatedDownload";box.className="notice";box.style.marginTop="16px";$("content").prepend(box)}
-  box.innerHTML='<strong>Document prêt.</strong> Si le téléchargement ne démarre pas automatiquement, <a id="generatedDownloadLink" href="'+url+'" download="'+filename+'">clique ici pour télécharger le Word</a>.';
-  setTimeout(()=>{if(document.getElementById("generatedDownloadLink"))return;URL.revokeObjectURL(url)},60000);
+  box.innerHTML='<strong>✓ Word généré.</strong><p>Si Chrome ne l\'a pas téléchargé automatiquement, utilise le bouton ci-dessous.</p><button type="button" class="primary bigAction" id="generatedDownloadBtn">Télécharger le Word</button><p class="hint">Si Chrome bloque encore le téléchargement, autorise les téléchargements pour ce site puis reclique sur ce bouton.</p>';
+  const btn=document.getElementById("generatedDownloadBtn");
+  if(btn)btn.onclick=()=>{trigger();$("status").textContent="Téléchargement du Word demandé"};
+  setTimeout(()=>URL.revokeObjectURL(url),10*60*1000);
 }
+
 async function generateCautionDocument(){
   try{
     if(viewMode==="dashboard"){alert("Ouvre d’abord un dossier.");return}
